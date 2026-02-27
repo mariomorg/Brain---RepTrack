@@ -53,10 +53,10 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
-        <!-- H2 in-memory database for development -->
+        <!-- PostgreSQL driver -->
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
 
