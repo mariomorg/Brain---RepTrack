@@ -123,3 +123,43 @@ CREATE INDEX IF NOT EXISTS idx_relations_note_a
 
 CREATE INDEX IF NOT EXISTS idx_relations_note_b
     ON relations(note_b);
+
+
+-- =========================================================
+--  Datos de prueba para desarrollo
+-- =========================================================
+-- Inbox Items
+INSERT INTO inbox_items (id, raw_text, detected_type, status, created_at)
+VALUES
+    ('00000000-0000-0000-0000-000000000001', '¿Qué es la inteligencia artificial?', 'QUESTION', 'PROCESSED', now()),
+    ('00000000-0000-0000-0000-000000000002', 'Enlace a paper sobre redes neuronales', 'LINK', 'PROCESSED', now()),
+    ('00000000-0000-0000-0000-000000000003', 'Audio de entrevista sobre IA', 'AUDIO', 'PROCESSED', now())
+ON CONFLICT (id) DO NOTHING;
+
+-- Notas
+INSERT INTO notes (id, title, path, type, summary, created_at, inbox_item_id)
+VALUES
+    ('10000000-0000-0000-0000-000000000001', 'Introducción a la IA', '/notas/ia', 'TEXT', 'Resumen básico sobre IA.', now(), '00000000-0000-0000-0000-000000000001'),
+    ('10000000-0000-0000-0000-000000000002', 'Redes neuronales', '/notas/redes', 'LINK', 'Paper fundamental sobre redes neuronales.', now(), '00000000-0000-0000-0000-000000000002'),
+    ('10000000-0000-0000-0000-000000000003', 'Entrevista IA', '/notas/audio', 'AUDIO', 'Audio con expertos en IA.', now(), '00000000-0000-0000-0000-000000000003'),
+    ('10000000-0000-0000-0000-000000000004', 'Aplicaciones de la IA', '/notas/apps', 'TEXT', 'Usos prácticos de la IA.', now(), null)
+ON CONFLICT (id) DO NOTHING;
+
+-- Tags
+INSERT INTO note_tags (note_id, tag_name) VALUES
+    ('10000000-0000-0000-0000-000000000001', 'inteligencia artificial'),
+    ('10000000-0000-0000-0000-000000000001', 'introducción'),
+    ('10000000-0000-0000-0000-000000000002', 'redes neuronales'),
+    ('10000000-0000-0000-0000-000000000002', 'paper'),
+    ('10000000-0000-0000-0000-000000000003', 'audio'),
+    ('10000000-0000-0000-0000-000000000003', 'entrevista'),
+    ('10000000-0000-0000-0000-000000000004', 'aplicaciones'),
+    ('10000000-0000-0000-0000-000000000004', 'inteligencia artificial')
+ON CONFLICT (note_id, tag_name) DO NOTHING;
+
+-- Relaciones
+INSERT INTO relations (id, note_a, note_b, score, validated)
+VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000002', 0.9, true),
+    ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000004', 0.7, false)
+ON CONFLICT (id) DO NOTHING;
