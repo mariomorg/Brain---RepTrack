@@ -1,5 +1,6 @@
 package com.brainreptrack.inbox.controller;
 
+import com.brainreptrack.inbox.client.TranscriptionClient;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.service.InboxItemService;
@@ -7,9 +8,11 @@ import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -20,6 +23,9 @@ import java.util.UUID;
 public class InboxItemController {
 
     private final InboxItemService service;
+
+    private final TranscriptionClient transcriptionClient;
+
 
     @PostMapping
     public ResponseEntity<ApiResponse<InboxItemResponseDto>> create(
@@ -89,4 +95,26 @@ public class InboxItemController {
     public ResponseEntity<ApiResponse<String>> createMarkdown(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.createMarkdown(id)));
     }
+
+    @PostMapping(value = "/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> createFromAudio(
+            @RequestParam("file") MultipartFile file) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("El archivo de audio está vacío"));
+        }
+
+        String transcript = transcriptionClient.transcribe(file);
+
+        InboxItemRequestDto dto = new InboxItemRequestDto();
+        dto.setRawText(transcript);
+        dto.setDetectedType("AUDIO");
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.create(dto)));
+    }
+
+
+
 }
