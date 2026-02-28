@@ -71,6 +71,11 @@ const StopIcon = () => (
         <rect x="4" y="4" width="16" height="16" rx="2" />
     </svg>
 );
+const CheckIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+    </svg>
+);
 
 /* ─────────────────────────── Types ─────────────────────────── */
 interface AttachedFile {
@@ -83,6 +88,11 @@ interface AttachedFile {
 /* ─────────────────────────── Helpers ─────────────────────────── */
 function isUrl(text: string): boolean {
     try { new URL(text); return true; } catch { return false; }
+}
+
+/** Module-level helper keeps nesting depth within limits. */
+function applyImagePreview(id: string, url: string, prev: AttachedFile[]): AttachedFile[] {
+    return prev.map(a => (a.id === id ? { ...a, preview: url } : a));
 }
 
 function detectType(text: string, attachments: AttachedFile[]): string {
@@ -115,7 +125,7 @@ function generateId(): string {
 }
 
 /* ─────────────────────────── Link Modal ─────────────────────────── */
-function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: string) => void; onClose: () => void }) {
+function LinkModal({ onInsert, onClose }: Readonly<{ onInsert: (url: string, label?: string) => void; onClose: () => void }>) {
     const [url, setUrl] = useState('');
     const [label, setLabel] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -129,8 +139,15 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
     };
 
     return (
-        <div className="modal-backdrop" onClick={onClose}>
-            <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div className="modal-backdrop">
+            {/* Native button covers the backdrop – satisfies a11y, handles backdrop-click-to-close */}
+            <button
+                className="modal-backdrop__close"
+                aria-label="Cerrar"
+                tabIndex={-1}
+                onClick={onClose}
+            />
+            <div className="modal-box">
                 <div className="modal-title"><LinkIcon /> Insertar enlace</div>
                 <input
                     ref={inputRef}
@@ -138,14 +155,14 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
                     placeholder="https://ejemplo.com"
                     value={url}
                     onChange={e => setUrl(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleInsert(); if (e.key === 'Escape') onClose(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { handleInsert(); } else if (e.key === 'Escape') { onClose(); } }}
                 />
                 <input
                     className="modal-input"
                     placeholder="Texto del enlace (opcional)"
                     value={label}
                     onChange={e => setLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleInsert(); if (e.key === 'Escape') onClose(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { handleInsert(); } else if (e.key === 'Escape') { onClose(); } }}
                 />
                 <div className="modal-actions">
                     <button className="modal-btn modal-btn--cancel" onClick={onClose}>Cancelar</button>
@@ -157,7 +174,7 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
 }
 
 /* ─────────────────────────── Brain mini card ─────────────────────────── */
-function BrainMiniCard({ note }: { note: Note }) {
+function BrainMiniCard({ note }: Readonly<{ note: Note }>) {
     return (
         <div className="brain-mini-card">
             <div className="brain-mini-card__type">
@@ -178,16 +195,18 @@ function BrainMiniCard({ note }: { note: Note }) {
 }
 
 /* ─────────────────────────── Attachment preview ─────────────────────────── */
-function AttachmentPreview({ attachment, onRemove }: { attachment: AttachedFile; onRemove: () => void }) {
+function AttachmentPreview({ attachment, onRemove }: Readonly<{ attachment: AttachedFile; onRemove: () => void }>) {
+    let preview: React.ReactNode;
+    if (attachment.type === 'image' && attachment.preview) {
+        preview = <img src={attachment.preview} alt={attachment.file.name} className="attachment-chip__thumb" />;
+    } else if (attachment.type === 'audio') {
+        preview = <span className="attachment-chip__icon"><MicIcon /></span>;
+    } else {
+        preview = <span className="attachment-chip__icon"><FileIcon /></span>;
+    }
     return (
         <div className="attachment-chip">
-            {attachment.type === 'image' && attachment.preview ? (
-                <img src={attachment.preview} alt={attachment.file.name} className="attachment-chip__thumb" />
-            ) : attachment.type === 'audio' ? (
-                <span className="attachment-chip__icon"><MicIcon /></span>
-            ) : (
-                <span className="attachment-chip__icon"><FileIcon /></span>
-            )}
+            {preview}
             <span className="attachment-chip__name">{attachment.file.name}</span>
             <button className="attachment-chip__remove" onClick={onRemove} title="Quitar">
                 <XIcon />
@@ -216,12 +235,12 @@ function AiApprovalCard({
     onApprove,
     onReject,
     onRemove,
-}: {
+}: Readonly<{
     item: InboxItem;
     onApprove: () => void;
     onReject: () => void;
     onRemove: () => void;
-}) {
+}>) {
     const proposal = parseProposal(item.proposalsJson);
     const clasif = proposal?.clasificacion ?? [];
     const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
@@ -270,7 +289,8 @@ function AiApprovalCard({
                             </span>
                         ))}
                     </div>
-                ) : legacyPath ? (
+                ) : null}
+                {!pathLabel && legacyPath ? (
                     <div className="ai-proposal-box__path">
                         {legacyPath.split('/').map((seg, i) => (
                             <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -279,11 +299,12 @@ function AiApprovalCard({
                             </span>
                         ))}
                     </div>
-                ) : (
+                ) : null}
+                {!pathLabel && !legacyPath ? (
                     <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
                         Sin clasificación definida
                     </div>
-                )}
+                ) : null}
 
                 {motivo && (
                     <div className="ai-proposal-box__motivo">{motivo}</div>
@@ -349,24 +370,19 @@ export default function InboxPage() {
 
     /* Avanzar: crossfade slot a slot */
     const advanceCarousel = useCallback((nextIdx?: number) => {
-        const next = nextIdx !== undefined ? nextIdx : (carouselIndex + 1) % recentNotes.length;
-        // Fade out slot 0
+        const next = nextIdx ?? (carouselIndex + 1) % recentNotes.length;
         setSlotVisible([false, true, true]);
-        setTimeout(() => {
-            // Cambiar contenido mientras slot 0 está invisible
+        const applyNewSlots = () => {
             setSlotNotes([
                 recentNotes[next] ?? null,
                 recentNotes[(next + 1) % recentNotes.length] ?? null,
                 recentNotes[(next + 2) % recentNotes.length] ?? null,
             ]);
             setCarouselIndex(next);
-            // Esperar un frame para que React pinte el nuevo contenido antes del fade in
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setSlotVisible([true, true, true]);
-                });
-            });
-        }, 500);
+            // 16ms = one animation frame; lets React paint the new content before fading in
+            setTimeout(() => setSlotVisible([true, true, true]), 16);
+        };
+        setTimeout(applyNewSlots, 500);
     }, [carouselIndex, recentNotes]);
 
     /* Carrusel automático */
@@ -389,28 +405,30 @@ export default function InboxPage() {
     const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
 
     /* ── File helpers ── */
+    const readImagePreview = useCallback((id: string, file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const url = e.target?.result as string;
+            setAttachments(prev => applyImagePreview(id, url, prev));
+        };
+        reader.readAsDataURL(file);
+    }, []);
+
     const addFiles = useCallback((files: File[]) => {
         const newAttachments: AttachedFile[] = [];
         for (const file of files) {
             const isImage = file.type.startsWith('image/');
             const isAudio = file.type.startsWith('audio/');
             const id = generateId();
-            const att: AttachedFile = {
-                id,
-                file,
-                type: isImage ? 'image' : isAudio ? 'audio' : 'file',
-            };
-            if (isImage) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    setAttachments(prev => prev.map(a => a.id === id ? { ...a, preview: e.target?.result as string } : a));
-                };
-                reader.readAsDataURL(file);
-            }
+            let attType: 'image' | 'file' | 'audio' = 'file';
+            if (isImage) { attType = 'image'; }
+            else if (isAudio) { attType = 'audio'; }
+            const att: AttachedFile = { id, file, type: attType };
+            if (isImage) { readImagePreview(id, file); }
             newAttachments.push(att);
         }
         setAttachments(prev => [...prev, ...newAttachments]);
-    }, []);
+    }, [readImagePreview]);
 
     const removeAttachment = (id: string) => setAttachments(prev => prev.filter(a => a.id !== id));
 
@@ -538,7 +556,11 @@ export default function InboxPage() {
                     position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
                     z-index: 1000; display: flex; align-items: center; justify-content: center;
                 }
+                .modal-backdrop__close {
+                    position: absolute; inset: 0; background: transparent; border: none; cursor: default;
+                }
                 .modal-box {
+                    position: relative; z-index: 1;
                     background: var(--color-bg-card, #1a1a2e); border: 1px solid var(--color-border, #2d2d4a);
                     border-radius: 12px; padding: 24px; width: 400px; max-width: 92vw;
                     display: flex; flex-direction: column; gap: 12px;
@@ -743,7 +765,8 @@ export default function InboxPage() {
                     </div>
 
                     {/* Capture box */}
-                    <div
+                    <section
+                        aria-label="Área de captura de contenido"
                         className={`capture-box${isDragging ? ' capture-box--dragging' : ''}`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
@@ -823,22 +846,25 @@ export default function InboxPage() {
                         <div className="capture-box__hint">
                             Enter para guardar&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar imágenes&nbsp;•&nbsp;Shift+Enter para nueva línea
                         </div>
-                    </div>
+                    </section>
 
-                    {/* Pending section */}
                     <div className="pending-section__header">
                         <span className="pending-section__title">Actividad del inbox</span>
                         <span className="pending-count-badge">{pendingCount} items</span>
                     </div>
 
-                    {loading ? (
-                        <div className="loading-spinner">Cargando…</div>
-                    ) : pendingItems.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="empty-state__icon">✅</div>
-                            <p className="empty-state__text">Sin elementos pendientes. ¡Todo procesado!</p>
-                        </div>
-                    ) : (() => {
+                    {(() => {
+                        if (loading) {
+                            return <div className="loading-spinner">Cargando…</div>;
+                        }
+                        if (pendingItems.length === 0) {
+                            return (
+                                <div className="empty-state">
+                                    <div className="empty-state__icon">✅</div>
+                                    <p className="empty-state__text">Sin elementos pendientes. ¡Todo procesado!</p>
+                                </div>
+                            );
+                        }
                         const awaitingItems = pendingItems.filter(i => i.status === 'AWAITING_APPROVAL');
                         const processingItems = pendingItems.filter(i => i.status !== 'AWAITING_APPROVAL');
                         return (
@@ -932,9 +958,9 @@ export default function InboxPage() {
                         <>
                             {/* Dots indicadores */}
                             <div className="carousel-dots">
-                                {recentNotes.map((_, i) => (
+                                {recentNotes.map((note, i) => (
                                     <button
-                                        key={i}
+                                        key={note.id}
                                         className={`carousel-dot${i === carouselIndex ? ' carousel-dot--active' : ''}`}
                                         onClick={() => advanceCarousel(i)}
                                     />
@@ -943,24 +969,30 @@ export default function InboxPage() {
 
                             {/* Carrusel de tarjetas */}
                             <div className="carousel-stack">
-                                {slotNotes.map((note, offset) => note && (
-                                    <div
-                                        key={offset}
-                                        className={`carousel-card carousel-card--pos${offset}`}
-                                        style={{
-                                            opacity: slotVisible[offset] ? (offset === 0 ? 1 : offset === 1 ? 0.5 : 0.2) : 0,
-                                            cursor: 'pointer',
-                                        }}
-                                        onClick={() => navigate(`/cerebro?search=${encodeURIComponent(note.title)}`)}
-                                    >
-                                        <BrainMiniCard note={note} />
-                                    </div>
-                                ))}
+                                {slotNotes.map((note, offset) => {
+                                    if (!note) return null;
+                                    let slotOpacity = 0;
+                                    if (slotVisible[offset]) {
+                                        if (offset === 0) { slotOpacity = 1; }
+                                        else if (offset === 1) { slotOpacity = 0.5; }
+                                        else { slotOpacity = 0.2; }
+                                    }
+                                    return (
+                                        <button
+                                            key={note.id}
+                                            className={`carousel-card carousel-card--pos${offset}`}
+                                            style={{ opacity: slotOpacity, cursor: 'pointer', display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0 }}
+                                            onClick={() => navigate(`/cerebro?search=${encodeURIComponent(note.title)}`)}
+                                        >
+                                            <BrainMiniCard note={note} />
+                                        </button>
+                                    );
+                                })}
                             </div>
 
-                            <span className="see-all-link" onClick={() => navigate('/cerebro')}>
+                            <button className="see-all-link" onClick={() => navigate('/cerebro')}>
                                 Ver todo el cerebro →
-                            </span>
+                            </button>
                         </>
                     )}
                 </aside>

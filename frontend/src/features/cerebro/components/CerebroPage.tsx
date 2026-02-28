@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useCerebro } from '../hooks/useCerebro';
 import { NoteCard } from './NoteCard';
-import { TagTree } from './TagTree';
+import { TagFilter } from './TagFilter';
 
 const SearchIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -19,8 +19,16 @@ export default function CerebroPage() {
         error,
         searchQuery,
         setSearchQuery,
-        activePathPrefix,
-        selectPathPrefix,
+        tags,
+        activeTags,
+        toggleTag,
+        clearTags,
+        sortBy,
+        setSortBy,
+        currentPage,
+        setCurrentPage,
+        totalPages,
+        totalItems,
     } = useCerebro();
 
     const [showTagSuggestions, setShowTagSuggestions] = useState(false);
@@ -48,7 +56,7 @@ export default function CerebroPage() {
         setInputValue(value);
 
         // Detectar si está escribiendo un tag (empieza con #)
-        const tagMatch = value.match(/#(\w*)$/);
+        const tagMatch = /#(\w*)$/.exec(value);
         if (tagMatch) {
             // Guardar solo el texto antes del #
             const textBeforeTag = value.substring(0, value.lastIndexOf('#')).trim();
@@ -153,56 +161,65 @@ export default function CerebroPage() {
             )}
 
             {/* Content */}
-            {loading ? (
-                <div className="loading-spinner">Cargando cerebro…</div>
-            ) : error ? (
-                <div className="empty-state">
-                    <div className="empty-state__icon">⚠️</div>
-                    <p className="empty-state__text">{error}</p>
-                </div>
-            ) : filteredNotes.length === 0 ? (
-                <div className="empty-state">
-                    <div className="empty-state__icon">🧠</div>
-                    <p className="empty-state__text">
-                        {searchQuery || activeTags.length > 0
-                            ? 'No se encontraron notas con ese filtro.'
-                            : 'Sin notas todavía. ¡Empieza capturando ideas desde el Inbox!'}
-                    </p>
-                </div>
-            ) : (
-                <>
-                    <div className="notes-grid">
-                        {filteredNotes.map((note) => (
-                            <NoteCard key={note.id} note={note} />
-                        ))}
-                    </div>
-
-                    {/* Paginación */}
-                    {totalPages > 1 && (
-                        <div className="pagination">
-                            <button
-                                className="pagination-btn"
-                                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                                disabled={currentPage === 1}
-                            >
-                                ← Anterior
-                            </button>
-
-                            <div className="pagination-info">
-                                Página {currentPage} de {totalPages} ({totalItems} notas)
-                            </div>
-
-                            <button
-                                className="pagination-btn"
-                                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                                disabled={currentPage === totalPages}
-                            >
-                                Siguiente →
-                            </button>
+            {(() => {
+                if (loading) {
+                    return <div className="loading-spinner">Cargando cerebro…</div>;
+                }
+                if (error) {
+                    return (
+                        <div className="empty-state">
+                            <div className="empty-state__icon">⚠️</div>
+                            <p className="empty-state__text">{error}</p>
                         </div>
-                    )}
-                </>
-            )}
+                    );
+                }
+                if (filteredNotes.length === 0) {
+                    return (
+                        <div className="empty-state">
+                            <div className="empty-state__icon">🧠</div>
+                            <p className="empty-state__text">
+                                {searchQuery || activeTags.length > 0
+                                    ? 'No se encontraron notas con ese filtro.'
+                                    : 'Sin notas todavía. ¡Empieza capturando ideas desde el Inbox!'}
+                            </p>
+                        </div>
+                    );
+                }
+                return (
+                    <>
+                        <div className="notes-grid">
+                            {filteredNotes.map((note) => (
+                                <NoteCard key={note.id} note={note} />
+                            ))}
+                        </div>
+
+                        {/* Paginación */}
+                        {totalPages > 1 && (
+                            <div className="pagination">
+                                <button
+                                    className="pagination-btn"
+                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    ← Anterior
+                                </button>
+
+                                <div className="pagination-info">
+                                    Página {currentPage} de {totalPages} ({totalItems} notas)
+                                </div>
+
+                                <button
+                                    className="pagination-btn"
+                                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Siguiente →
+                                </button>
+                            </div>
+                        )}
+                    </>
+                );
+            })()}
         </div>
     );
 }

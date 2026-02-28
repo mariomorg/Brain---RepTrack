@@ -1,13 +1,13 @@
-
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Note } from '../types/note.types';
 import { noteService } from '../services/noteService';
 
-
 export type SortOption = 'newest' | 'oldest' | 'alphabetical' | 'alphabetical-reverse' | 'none';
-import { inboxService } from '@features/inbox/services/inboxService';
 
-const CEREBRO_POLL_MS = 4000; // poll while inbox has PENDING/PROCESSING items
+/** Returns true if the note contains ALL of the active tags. */
+function noteMatchesTags(note: Note, activeTags: string[]): boolean {
+    return activeTags.every(tag => note.tags.some(t => t.name === tag));
+}
 
 export function useCerebro() {
     const [notes, setNotes] = useState<Note[]>([]);
@@ -41,15 +41,14 @@ export function useCerebro() {
                 } else if (activeTags.length > 0) {
                     // Obtener todas las notas y filtrar por tags en el cliente
                     const allNotes = await noteService.findAll();
-                    result = allNotes.filter(note =>
-                        activeTags.every(tag => note.tags.includes(tag))
-                    );
+                    result = allNotes.filter(note => noteMatchesTags(note, activeTags));
                 } else {
                     result = await noteService.findAll();
                 }
                 if (!cancelled) setNotes(result);
             } catch (e) {
-                if (!cancelled) setError('Error al buscar notas');
+                if (!cancelled) { setError('Error al buscar notas'); }
+                console.error('[useCerebro] fetchNotes error:', e);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -64,7 +63,7 @@ export function useCerebro() {
                 ? prev.filter(t => t !== tag)
                 : [...prev, tag]
         );
-    }, [stopPolling]);
+    }, []);
 
     const clearTags = useCallback(() => {
         setActiveTags([]);
@@ -111,8 +110,6 @@ export function useCerebro() {
         setSearchQuery,
         activeTags,
         toggleTag,
-        activePathPrefix,
-        selectPathPrefix,
         clearTags,
         sortBy,
         setSortBy,

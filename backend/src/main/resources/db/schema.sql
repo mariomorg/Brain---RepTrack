@@ -181,7 +181,18 @@ VALUES
     ('10000000-0000-0000-0000-000000000004', 'Aplicaciones de la IA', '/notas/apps', 'TEXT', 'Usos prácticos de la IA.', now(), null)
 ON CONFLICT (id) DO NOTHING;
 
--- Tags
+-- Tags (registry must be populated before note_tags FK inserts)
+INSERT INTO tags (name, parent_name) VALUES
+    ('inteligencia artificial', NULL),
+    ('introducción', NULL),
+    ('redes neuronales', NULL),
+    ('paper', NULL),
+    ('audio', NULL),
+    ('entrevista', NULL),
+    ('aplicaciones', NULL)
+ON CONFLICT (name) DO NOTHING;
+
+-- Note-Tag associations
 INSERT INTO note_tags (note_id, tag_name) VALUES
     ('10000000-0000-0000-0000-000000000001', 'inteligencia artificial'),
     ('10000000-0000-0000-0000-000000000001', 'introducción'),
