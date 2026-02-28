@@ -1,8 +1,18 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { TagNode, Idea, ROOT_COLORS, BASE_RADIUS_L0, CHILD_RATIO_L1, CHILD_RATIO_L2 } from '../mockData';
-import { Camera, worldToScreen, screenToWorld, applyZoomAtPoint } from '../lib/camera';
+import { TagNode, Idea, ROOT_COLORS } from '../mockData';
+import { Camera, worldToScreen } from '../lib/camera';
 import { shouldDrawNode } from '../lib/lod';
 import { hitTestIdea } from '../lib/hittest';
+
+/** Genera un color HSL determinista a partir de un string */
+function colorForKey(key: string): string {
+  if (ROOT_COLORS[key]) return ROOT_COLORS[key];
+  // Hash del string → tono en la rueda de color
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
+  const hue = (h * 137.508) % 360;
+  return `hsl(${Math.round(hue)},65%,62%)`;
+}
 
 interface MapCanvasProps {
   camera: Camera;
@@ -15,21 +25,14 @@ interface MapCanvasProps {
   onSelectTag: (tag: TagNode) => void;
   onSelectIdea: (idea: Idea) => void;
   onFocusTag: (tag: TagNode) => void;
+  onNavigateToNote: (idea: Idea) => void;
   width: number;
   height: number;
 }
 
-const ANIMATION_DURATION = 250;
-
-/** Returns the world-space radius of a tag node based on level and confianza */
+/** Returns the world-space radius of a tag node. Always uses the precomputed radius. */
 function tagRadius(tag: TagNode): number {
-  if (tag.level === 0) return BASE_RADIUS_L0;
-  if (tag.level === 1) return BASE_RADIUS_L0 * CHILD_RATIO_L1 * (tag.confianza ?? 0.5);
-  if (tag.level === 2) {
-    // parent radius * CHILD_RATIO_L2 * confianza
-    return BASE_RADIUS_L0 * CHILD_RATIO_L1 * (tag.confianza ?? 0.5) * CHILD_RATIO_L2;
-  }
-  return 20;
+  return tag.radius ?? 300;
 }
 
 export const MapCanvas: React.FC<MapCanvasProps> = ({
@@ -42,17 +45,29 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   selectedIdea,
   onSelectTag: _onSelectTag,
   onSelectIdea,
-  onFocusTag,
+  onFocusTag: _onFocusTag,
+  onNavigateToNote,
   width,
   height,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const dragging = useRef(false);
-  const lastPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const animRef = useRef<number | null>(null);
-  const animStart = useRef<number>(0);
-  const animFrom = useRef<Camera>(camera);
-  const animTo = useRef<Camera>(camera);
+  const canvasRef   = useRef<HTMLCanvasElement>(null);
+  const animRef     = useRef<number | null>(null);
+
+  // Pan state
+  const dragging    = useRef(false);
+  const lastPos     = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Inercia pan
+  const velocity    = useRef<{ vx: number; vy: number }>({ vx: 0, vy: 0 });
+  const lastTime    = useRef<number>(0);
+
+  // Zoom con inercia (lerp hacia targetZoom)
+  const targetZoom  = useRef(camera.zoom);
+  const cameraRef   = useRef(camera);
+  cameraRef.current = camera;
+
+  // Pin hover
+  const hoveredIdea = useRef<string | null>(null);
 
   // Dibuja el canvas
   const draw = useCallback(() => {
@@ -60,13 +75,32 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     if (!rawCtx) return;
     const ctx: CanvasRenderingContext2D = rawCtx;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = '#f7f8fa';
+
+    // ── Fondo oscuro degradado ───────────────────────────────────────────────
+    const bgGrad = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.75);
+    bgGrad.addColorStop(0,   '#1a1d2e');
+    bgGrad.addColorStop(1,   '#0d0f1a');
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
+
+    // Estrellas de fondo (posición determinista por seed)
+    ctx.save();
+    const starCount = 120;
+    for (let i = 0; i < starCount; i++) {
+      const sx = ((i * 2971 + 13) % width);
+      const sy = ((i * 1873 + 7)  % height);
+      const sr = (i % 3 === 0) ? 1.2 : 0.6;
+      const sa = 0.2 + (i % 5) * 0.07;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(255,255,255,${sa})`;
+      ctx.fill();
+    }
+    ctx.restore();
 
     const MAX_LEVEL = 3;
 
-    // ── Pre-computes ────────────────────────────────────────────────────────
-    // Agrupar hijos por parentPath
+    // ── Pre-computes ─────────────────────────────────────────────────────────
     const childrenMap = new Map<string | null, TagNode[]>();
     tags.forEach(tag => {
       const key = tag.parentPath ?? null;
@@ -74,7 +108,6 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       childrenMap.get(key)!.push(tag);
     });
 
-    // Agrupar ideas por tagPath (L2)
     const ideasByTag = new Map<string, Idea[]>();
     ideas.forEach(idea => {
       idea.tagPaths.forEach(tp => {
@@ -83,18 +116,13 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       });
     });
 
-    // ── Helpers ─────────────────────────────────────────────────────────────
-    /** Alpha 0→1 as screenR grows from threshold to threshold*2 (smooth fade-in) */
+    // ── Helpers ──────────────────────────────────────────────────────────────
     function fadeIn(screenR: number, threshold = 14): number {
       return Math.min(1, Math.max(0, (screenR - threshold) / threshold));
     }
-
-    /** Alpha 1→0 as value grows from start to end (smooth fade-out) */
     function fadeOut(value: number, start: number, end: number): number {
       return Math.min(1, Math.max(0, 1 - (value - start) / (end - start)));
     }
-
-    /** Fit text inside a max pixel width, truncating with … if needed */
     function fitText(text: string, maxPx: number): string {
       if (ctx.measureText(text).width <= maxPx) return text;
       let t = text;
@@ -102,29 +130,67 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       return t + '…';
     }
 
-    // ── PASS 1: Draw all circles back-to-front (L0 → L1 → L2) ──────────────
+    // ── PASS 1: Círculos ─────────────────────────────────────────────────────
     function drawCircle(tag: TagNode, level: number) {
       if (level >= MAX_LEVEL) return;
       const worldR = tagRadius(tag);
       const screenR = worldR * camera.zoom;
       if (!shouldDrawNode(worldR, camera.zoom)) return;
 
-      const sc = worldToScreen(camera, tag.x, tag.y, width, height);
+      const sc   = worldToScreen(camera, tag.x, tag.y, width, height);
       const rootKey = tag.path.split('/')[0];
-      const color = ROOT_COLORS[rootKey] || '#888';
+      const color   = colorForKey(rootKey);
+      const alpha   = fadeIn(screenR);
 
-      const baseAlpha = fadeIn(screenR);
       ctx.save();
-      ctx.globalAlpha = baseAlpha;
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
       ctx.arc(sc.x, sc.y, screenR, 0, 2 * Math.PI);
-      // Fill: tenue en L0, más sólido en hijos
-      const fills = ['18', '28', '42'];
-      ctx.fillStyle = color + fills[level];
-      ctx.fill();
-      ctx.lineWidth = level === 0 ? 2.5 : 1.5;
-      ctx.strokeStyle = color + (level === 0 ? 'cc' : 'aa');
-      ctx.stroke();
+
+      if (level === 0) {
+        // Gradiente radial tipo planeta — relleno sólido con highlight
+        const grad = ctx.createRadialGradient(
+          sc.x - screenR * 0.35, sc.y - screenR * 0.35, screenR * 0.05,
+          sc.x, sc.y, screenR
+        );
+        grad.addColorStop(0,   color + 'cc');   // highlight claro
+        grad.addColorStop(0.5, color + '99');
+        grad.addColorStop(1,   color + 'dd');   // borde más saturado
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Borde luminoso fuerte
+        ctx.shadowColor = color;
+        ctx.shadowBlur  = Math.max(24, screenR * 0.12);
+        ctx.lineWidth   = Math.max(2, screenR * 0.008);
+        ctx.strokeStyle = color + 'ff';
+        ctx.stroke();
+        ctx.shadowBlur  = 0;
+
+        // Halo exterior tenue
+        ctx.beginPath();
+        ctx.arc(sc.x, sc.y, screenR * 1.05, 0, 2 * Math.PI);
+        ctx.lineWidth   = 1.5;
+        ctx.strokeStyle = color + '44';
+        ctx.stroke();
+      } else if (level === 1) {
+        ctx.fillStyle   = color + '40';
+        ctx.fill();
+        ctx.lineWidth   = 2;
+        ctx.strokeStyle = color + 'dd';
+        ctx.shadowColor = color + '88';
+        ctx.shadowBlur  = 10;
+        ctx.stroke();
+        ctx.shadowBlur  = 0;
+      } else {
+        // L2
+        ctx.fillStyle   = color + '30';
+        ctx.fill();
+        ctx.lineWidth   = 1;
+        ctx.strokeStyle = color + 'bb';
+        ctx.stroke();
+      }
+
       ctx.restore();
 
       const children = childrenMap.get(tag.path) ?? [];
@@ -135,134 +201,50 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (tag.level === 0) drawCircle(tag, 0);
     }
 
-    // ── PASS 2: Draw labels & cards ──────────────────────────────────────────
+    // ── PASS 2: Labels + tarjetas ─────────────────────────────────────────────
     function drawLabelsAndCards(tag: TagNode, level: number) {
       if (level >= MAX_LEVEL) return;
-      const worldR = tagRadius(tag);
+      const worldR  = tagRadius(tag);
       const screenR = worldR * camera.zoom;
       if (!shouldDrawNode(worldR, camera.zoom)) return;
 
-      const sc = worldToScreen(camera, tag.x, tag.y, width, height);
-      const rootKey = tag.path.split('/')[0];
-      const color = ROOT_COLORS[rootKey] || '#888';
-
-      // ── Label del nodo ───────────────────────────────────────────────────
-      // Fade-out: desaparece cuando los hijos empiezan a ser visibles
+      const sc      = worldToScreen(camera, tag.x, tag.y, width, height);
       const children = childrenMap.get(tag.path) ?? [];
-      let labelAlpha = fadeIn(screenR);
 
+      // Fade-out del label cuando los hijos empiezan a aparecer
+      let labelAlpha = fadeIn(screenR);
       if (children.length > 0) {
-        // Calcula qué tan visibles están los hijos
         const firstChildR = tagRadius(children[0]) * camera.zoom;
-        // Empezar fade-out cuando el hijo mide 30px, acabar a 80px
-        labelAlpha *= fadeOut(firstChildR, 30, 80);
+        labelAlpha *= fadeOut(firstChildR, 28, 72);
       }
 
-      if (labelAlpha > 0.02 && screenR >= 18) {
-        const fontSize = Math.max(10, Math.min(screenR * 0.38, 48));
+      if (labelAlpha > 0.02 && screenR >= 16) {
+        const fontSize = Math.max(11, Math.min(screenR * 0.35, 52));
         ctx.save();
-        ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
-        const maxW = screenR * 1.7;
-        const label = fitText(tag.name, maxW);
-        ctx.globalAlpha = labelAlpha;
-        // Sombra suave para legibilidad
-        ctx.shadowColor = 'rgba(255,255,255,0.9)';
-        ctx.shadowBlur = fontSize * 0.5;
-        ctx.fillStyle = level === 0 ? color : '#1a1a2e';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, sc.x, sc.y);
+        ctx.font          = `700 ${fontSize}px system-ui, sans-serif`;
+        ctx.globalAlpha   = labelAlpha;
+        ctx.textAlign     = 'center';
+        ctx.textBaseline  = 'middle';
+        const label       = fitText(tag.name, screenR * 1.65);
+
+        if (level === 0) {
+          // Texto L0: blanco con sombra oscura fuerte, sin doble capa
+          ctx.font        = `800 ${fontSize}px system-ui, sans-serif`;
+          ctx.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx.shadowBlur  = fontSize * 0.8;
+          ctx.fillStyle   = '#ffffff';
+          ctx.fillText(label, sc.x, sc.y);
+          ctx.shadowBlur  = 0;
+        } else {
+          // L1 / L2: texto blanco con sombra oscura
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur  = fontSize * 0.4;
+          ctx.fillStyle   = '#f0f0f0';
+          ctx.fillText(label, sc.x, sc.y);
+        }
         ctx.restore();
       }
 
-      // ── Tarjetas de ideas en L2 ──────────────────────────────────────────
-      if (level === 2) {
-        const tagIdeas = ideasByTag.get(tag.path) ?? [];
-        // Mostrar tarjetas cuando el círculo es grande (≥120px radio en pantalla)
-        const cardAlpha = fadeIn(screenR, 120);
-        if (cardAlpha > 0.02 && tagIdeas.length > 0) {
-          const cardW = Math.min(screenR * 1.6, 220);
-          const cardH = 56;
-          const cardGap = 10;
-
-          // Las tarjetas se colocan en abanico vertical BAJO el texto del tag,
-          // empezando desde screenR*0.45 para dejar el centro libre
-          const startY = sc.y + screenR * 0.30;
-
-          tagIdeas.forEach((idea, i) => {
-            const cx = sc.x - cardW / 2;
-            const cy = startY + i * (cardH + cardGap);
-
-            ctx.save();
-            ctx.globalAlpha = cardAlpha;
-
-            // Sombra de la tarjeta
-            ctx.shadowColor = 'rgba(0,0,0,0.13)';
-            ctx.shadowBlur = 8;
-            ctx.shadowOffsetY = 2;
-
-            // Fondo blanco redondeado
-            const r = 8;
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.moveTo(cx + r, cy);
-            ctx.lineTo(cx + cardW - r, cy);
-            ctx.quadraticCurveTo(cx + cardW, cy, cx + cardW, cy + r);
-            ctx.lineTo(cx + cardW, cy + cardH - r);
-            ctx.quadraticCurveTo(cx + cardW, cy + cardH, cx + cardW - r, cy + cardH);
-            ctx.lineTo(cx + r, cy + cardH);
-            ctx.quadraticCurveTo(cx, cy + cardH, cx, cy + cardH - r);
-            ctx.lineTo(cx, cy + r);
-            ctx.quadraticCurveTo(cx, cy, cx + r, cy);
-            ctx.closePath();
-            ctx.fill();
-
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetY = 0;
-
-            // Acento de color a la izquierda (dentro del border-radius)
-            ctx.save();
-            ctx.beginPath();
-            ctx.moveTo(cx + r, cy);
-            ctx.lineTo(cx + cardW - r, cy);
-            ctx.quadraticCurveTo(cx + cardW, cy, cx + cardW, cy + r);
-            ctx.lineTo(cx + cardW, cy + cardH - r);
-            ctx.quadraticCurveTo(cx + cardW, cy + cardH, cx + cardW - r, cy + cardH);
-            ctx.lineTo(cx + r, cy + cardH);
-            ctx.quadraticCurveTo(cx, cy + cardH, cx, cy + cardH - r);
-            ctx.lineTo(cx, cy + r);
-            ctx.quadraticCurveTo(cx, cy, cx + r, cy);
-            ctx.closePath();
-            ctx.clip();
-            ctx.fillStyle = color;
-            ctx.fillRect(cx, cy, 4, cardH);
-            ctx.restore();
-
-            // Título
-            const titleSize = Math.max(9, Math.min(cardW * 0.075, 13));
-            ctx.fillStyle = '#1a1a2e';
-            ctx.font = `600 ${titleSize}px system-ui, sans-serif`;
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillText(fitText(idea.title, cardW - 20), cx + 12, cy + 9);
-
-            // Excerpt
-            const excerptSize = Math.max(8, titleSize - 1.5);
-            ctx.fillStyle = '#555';
-            ctx.font = `${excerptSize}px system-ui, sans-serif`;
-            ctx.fillText(fitText(idea.excerpt, cardW - 20), cx + 12, cy + 9 + titleSize + 4);
-
-            // Fecha
-            ctx.fillStyle = '#aaa';
-            ctx.font = `${Math.max(7, excerptSize - 1)}px system-ui, sans-serif`;
-            ctx.fillText(idea.createdAt, cx + 12, cy + cardH - excerptSize - 2);
-
-            ctx.restore();
-          });
-        }
-      }
-
-      // Recursión
       for (const child of children) drawLabelsAndCards(child, level + 1);
     }
 
@@ -270,84 +252,129 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       if (tag.level === 0) drawLabelsAndCards(tag, 0);
     }
 
-    // ── PASS 3: Ideas como pins flotantes (fuera de círculos L2 o sin tag L2) ─
-    // Los pins aparecen con fade-in a partir de zoom 0.35 y son completamente
-    // visibles desde zoom 0.55. Por debajo de 0.35 no se dibujan.
-    const PIN_ZOOM_START = 0.35;  // empieza a aparecer
-    const PIN_ZOOM_FULL  = 0.55;  // completamente visible
+    // ── PASS 3: Pins flotantes ────────────────────────────────────────────────
+    const PIN_ZOOM_START = 0.35;
+    const PIN_ZOOM_FULL  = 0.60;
     const pinGlobalAlpha = Math.min(1, Math.max(0,
       (camera.zoom - PIN_ZOOM_START) / (PIN_ZOOM_FULL - PIN_ZOOM_START)
     ));
 
     if (pinGlobalAlpha > 0) {
       for (const idea of ideas) {
-        const hasVisibleCard = idea.tagPaths.some(tp => {
-          const tagNode = tags.find(t => t.path === tp && t.level === 2);
-          if (!tagNode) return false;
-          const worldR = tagRadius(tagNode);
-          return fadeIn(worldR * camera.zoom, 120) > 0.5;
-        });
-        if (hasVisibleCard) continue;
-
         const { x, y } = worldToScreen(camera, idea.x, idea.y, width, height);
-        const pinR = Math.max(6, 10 * camera.zoom);
-        const labelVisible = camera.zoom >= 0.5;
+        const rootKey   = idea.tagPaths[0]?.split('/')[0] ?? '';
+        const baseColor = rootKey ? colorForKey(rootKey) : '#43BCCD';
+        const isHovered = hoveredIdea.current === idea.id;
+        const pinColor  = isHovered ? '#F45B69' : baseColor;
+        const pinR      = Math.max(4, 7 * camera.zoom);
 
         ctx.save();
         ctx.globalAlpha = pinGlobalAlpha;
-        // Círculo del pin
+
+        // Halo suave exterior (más grande e intenso en hover)
+        const haloR    = isHovered ? pinR * 3.5 : pinR * 2.8;
+        const haloGrad = ctx.createRadialGradient(x, y, pinR * 0.5, x, y, haloR);
+        haloGrad.addColorStop(0, pinColor + (isHovered ? '66' : '44'));
+        haloGrad.addColorStop(1, pinColor + '00');
+        ctx.beginPath();
+        ctx.arc(x, y, haloR, 0, 2 * Math.PI);
+        ctx.fillStyle = haloGrad;
+        ctx.fill();
+
+        // Círculo principal
         ctx.beginPath();
         ctx.arc(x, y, pinR, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0,0,0,0.2)';
-        ctx.shadowBlur = 4;
+        ctx.fillStyle   = isHovered ? '#fff0f1' : '#ffffff';
+        ctx.shadowColor = pinColor;
+        ctx.shadowBlur  = isHovered ? 18 : 10;
         ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#444';
-        ctx.lineWidth = 1.5;
+        ctx.shadowBlur  = 0;
+        ctx.strokeStyle = pinColor;
+        ctx.lineWidth   = isHovered ? 2.5 : 1.8;
         ctx.stroke();
+
         // Punto interior
         ctx.beginPath();
-        ctx.arc(x, y, pinR * 0.4, 0, 2 * Math.PI);
-        ctx.fillStyle = '#43BCCD';
+        ctx.arc(x, y, pinR * 0.38, 0, 2 * Math.PI);
+        ctx.fillStyle = pinColor;
         ctx.fill();
-        // Nombre completo del pin
-        if (labelVisible) {
-          const fs = Math.max(10, 11 * camera.zoom);
-          ctx.font = `500 ${fs}px system-ui, sans-serif`;
-          const labelText = idea.title;
-          const tw = ctx.measureText(labelText).width;
-          const pad = 4;
-          ctx.fillStyle = 'rgba(255,255,255,0.92)';
-          ctx.shadowColor = 'rgba(0,0,0,0.12)';
-          ctx.shadowBlur = 3;
+
+        // Etiqueta flotante (pill)
+        const labelAlpha = Math.min(1, Math.max(0,
+          (camera.zoom - 0.50) / (0.75 - 0.50)
+        ));
+        if (labelAlpha > 0 || isHovered) {
+          const effectiveAlpha = isHovered ? Math.max(labelAlpha, 0.95) : labelAlpha;
+          const fs  = Math.max(9, 11 * Math.min(camera.zoom, 1.4));
+          ctx.font  = `${isHovered ? 600 : 500} ${fs}px system-ui, sans-serif`;
+          const tw  = ctx.measureText(idea.title).width;
+          const pH  = fs + 7;
+          const pW  = tw + 14;
+          const lx  = x + pinR + 6;
+          const ly  = y - pH / 2;
+
+          ctx.globalAlpha = pinGlobalAlpha * effectiveAlpha;
+
+          // Pill background
+          ctx.fillStyle   = isHovered ? 'rgba(244,91,105,0.92)' : 'rgba(10,12,22,0.72)';
+          ctx.strokeStyle = isHovered ? 'rgba(255,100,120,0.6)' : (pinColor + '66');
+          ctx.lineWidth   = isHovered ? 0 : 0.9;
+          ctx.shadowColor = isHovered ? 'rgba(244,91,105,0.5)' : 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur  = isHovered ? 12 : 8;
           ctx.beginPath();
-          ctx.roundRect(x + pinR + 4, y - fs / 2 - pad, tw + pad * 2, fs + pad * 2, 4);
+          ctx.roundRect(lx, ly, pW, pH, pH / 2);
           ctx.fill();
+          if (!isHovered) ctx.stroke();
           ctx.shadowBlur = 0;
-          ctx.fillStyle = '#1a1a2e';
-          ctx.textAlign = 'left';
+
+          // Texto
+          ctx.fillStyle    = '#ffffff';
+          ctx.textAlign    = 'left';
           ctx.textBaseline = 'middle';
-          ctx.fillText(labelText, x + pinR + 4 + pad, y);
+          ctx.shadowColor  = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur   = isHovered ? 0 : 3;
+          ctx.fillText(idea.title, lx + 7, ly + pH / 2);
+          ctx.shadowBlur   = 0;
         }
-        // Selección
-        if (selectedIdea && selectedIdea.id === idea.id) {
-          ctx.lineWidth = 2.5;
+
+        // Anillo de selección
+        if (selectedIdea?.id === idea.id) {
+          ctx.globalAlpha = pinGlobalAlpha;
+          ctx.lineWidth   = 2;
           ctx.strokeStyle = '#F45B69';
+          ctx.shadowColor = '#F45B69';
+          ctx.shadowBlur  = 12;
           ctx.beginPath();
           ctx.arc(x, y, pinR + 4, 0, 2 * Math.PI);
           ctx.stroke();
+          ctx.shadowBlur  = 0;
         }
+
         ctx.restore();
       }
     }
   }, [camera, tags, ideas, width, height, selectedIdea]);
 
-  // Redibuja en cada frame
+  // Cuando el padre cambia la cámara externamente (p.ej. botón Vista general),
+  // sincronizamos targetZoom para que el lerp apunte al zoom nuevo
+  useEffect(() => {
+    targetZoom.current = camera.zoom;
+  }, [camera.zoom]);
+
+  // Redibuja en cada frame + zoom suave con lerp
   useEffect(() => {
     let running = true;
     function frame() {
       if (!running) return;
+
+      // Lerp del zoom: acerca camera.zoom hacia targetZoom suavemente
+      const cam = cameraRef.current;
+      const tz  = targetZoom.current;
+      if (Math.abs(cam.zoom - tz) > 0.0005) {
+        const smoothed = cam.zoom + (tz - cam.zoom) * 0.14;
+        setCamera({ ...cam, zoom: smoothed });
+      }
+
       draw();
       animRef.current = requestAnimationFrame(frame);
     }
@@ -358,97 +385,145 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     };
   }, [draw]);
 
-  // Pan
+  // ── Pan ─────────────────────────────────────────────────────────────────────
+
+  /** Coordenadas del evento relativas al canvas (no a la ventana) */
+  const canvasXY = (e: React.MouseEvent) => ({
+    x: e.nativeEvent.offsetX,
+    y: e.nativeEvent.offsetY,
+  });
+
   const onMouseDown = (e: React.MouseEvent) => {
+    const { x, y } = canvasXY(e);
     dragging.current = true;
-    lastPos.current = { x: e.clientX, y: e.clientY };
+    lastPos.current  = { x, y };
+    velocity.current = { vx: 0, vy: 0 };
+    lastTime.current = performance.now();
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.cursor = 'grabbing';
   };
-  const onMouseUp = (e: React.MouseEvent) => {
+  const onMouseUp = (_e: React.MouseEvent) => {
     dragging.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.cursor = 'grab';
+  };
+  const onMouseLeave = (_e: React.MouseEvent) => {
+    dragging.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.cursor = 'grab';
+    if (hoveredIdea.current !== null) {
+      hoveredIdea.current = null;
+      draw();
+    }
   };
   const onMouseMove = (e: React.MouseEvent) => {
-    if (!dragging.current) return;
-    const dx = (e.clientX - lastPos.current.x) / camera.zoom;
-    const dy = (e.clientY - lastPos.current.y) / camera.zoom;
-    setCamera({ ...camera, x: camera.x - dx, y: camera.y - dy });
-    lastPos.current = { x: e.clientX, y: e.clientY };
+    const canvas = canvasRef.current;
+    const { x: cx, y: cy } = canvasXY(e);
+    if (dragging.current) {
+      const now = performance.now();
+      const dt  = Math.max(1, now - lastTime.current);
+      const dx  = (cx - lastPos.current.x) / cameraRef.current.zoom;
+      const dy  = (cy - lastPos.current.y) / cameraRef.current.zoom;
+      velocity.current = { vx: dx / dt, vy: dy / dt };
+      lastTime.current = now;
+      setCamera({
+        ...cameraRef.current,
+        x: cameraRef.current.x - dx,
+        y: cameraRef.current.y - dy,
+      });
+      lastPos.current = { x: cx, y: cy };
+    } else {
+      // Solo detectar hover cuando los pins son visibles
+      const zoom = cameraRef.current.zoom;
+      const pinsVisible = zoom >= 0.35;
+      const idea = pinsVisible
+        ? hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height)
+        : null;
+      const newHovered = idea?.id ?? null;
+
+      if (newHovered !== hoveredIdea.current) {
+        hoveredIdea.current = newHovered;
+        draw();
+      }
+
+      if (canvas) canvas.style.cursor = idea ? 'pointer' : 'grab';
+    }
   };
-  // Zoom
+
+  // ── Zoom suave (acumula en targetZoom, el lerp lo aplica) ───────────────────
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.15 : 0.87;
-    setCamera(applyZoomAtPoint(camera, factor, e.clientX, e.clientY, width, height));
+    const { x: cx, y: cy } = canvasXY(e);
+    const rawDelta  = e.deltaY;
+    const normDelta = Math.sign(rawDelta) * Math.min(Math.abs(rawDelta), 80);
+    const factor    = Math.pow(0.992, normDelta);
+    const clamped   = Math.max(0.08, Math.min(20, targetZoom.current * factor));
+    const cam     = cameraRef.current;
+    const before  = { x: (cx - width / 2) / cam.zoom  + cam.x,
+                      y: (cy - height / 2) / cam.zoom + cam.y };
+    const after   = { x: (cx - width / 2) / clamped  + cam.x,
+                      y: (cy - height / 2) / clamped + cam.y };
+    targetZoom.current = clamped;
+    setCamera({
+      zoom: cam.zoom,
+      x: cam.x + (before.x - after.x),
+      y: cam.y + (before.y - after.y),
+    });
   };
-  // Double click: zoom in
+
+  // Double click: si hay un pin navega a Cerebro, si no hace zoom in
   const onDoubleClick = (e: React.MouseEvent) => {
-    setCamera(applyZoomAtPoint(camera, 1.5, e.clientX, e.clientY, width, height));
-  };
-  // Click: selección
-  const onClick = (e: React.MouseEvent) => {
-    const world = screenToWorld(camera, e.clientX, e.clientY, width, height);
-    // Hit test sobre pins de ideas (siempre activo)
-    const idea = hitTestIdea(ideas, world);
+    const { x: cx, y: cy } = canvasXY(e);
+    const idea = hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height);
     if (idea) {
-      onSelectIdea(idea);
+      onNavigateToNote(idea);
       return;
     }
-    // Deshabilitado: selección de tags (círculos)
-    // const tag = hitTestTag(tags, world);
-    // if (tag) {
-    //   onSelectTag(tag);
-    //   // Focus animado
-    //   animateFocus(tag);
-    // }
+    const newTarget = Math.min(20, targetZoom.current * 1.8);
+    const cam       = cameraRef.current;
+    const before    = { x: (cx - width / 2) / cam.zoom  + cam.x,
+                        y: (cy - height / 2) / cam.zoom + cam.y };
+    const after     = { x: (cx - width / 2) / newTarget + cam.x,
+                        y: (cy - height / 2) / newTarget + cam.y };
+    targetZoom.current = newTarget;
+    setCamera({ zoom: cam.zoom, x: cam.x + (before.x - after.x), y: cam.y + (before.y - after.y) });
   };
-  // Focus animado
-  const animateFocus = (tag: TagNode) => {
-    const targetZoom = tag.level === 0 ? 1.0 : tag.level === 1 ? 1.6 : 2.0;
-    animStart.current = performance.now();
-    animFrom.current = { ...camera };
-    animTo.current = { x: tag.x, y: tag.y, zoom: targetZoom };
-    function step(now: number) {
-      const t = Math.min(1, (now - animStart.current) / ANIMATION_DURATION);
-      const ease = 1 - Math.pow(1 - t, 2);
-      setCamera({
-        x: animFrom.current.x + (animTo.current.x - animFrom.current.x) * ease,
-        y: animFrom.current.y + (animTo.current.y - animFrom.current.y) * ease,
-        zoom: animFrom.current.zoom + (animTo.current.zoom - animFrom.current.zoom) * ease,
-      });
-      if (t < 1) requestAnimationFrame(step);
+
+  // Click: un solo clic en un pin navega directamente a Cerebro
+  const onClick = (e: React.MouseEvent) => {
+    if (cameraRef.current.zoom < 0.35) return;
+    const { x: cx, y: cy } = canvasXY(e);
+    const idea = hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height);
+    if (idea) {
+      onSelectIdea(idea);
+      onNavigateToNote(idea);
     }
-    requestAnimationFrame(step);
-    onFocusTag(tag);
   };
-  // Reset view
-  const resetView = () => {
-    setCamera({ x: 0, y: 0, zoom: 0.8 });
-  };
+
   // Resize
   useEffect(() => {
-    const handleResize = () => {
-      draw();
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener('resize', draw);
+    return () => window.removeEventListener('resize', draw);
   }, [draw]);
 
   return (
-    <div className="map-canvas-container">
+    <div className="map-canvas-container" style={{ cursor: 'grab' }}>
       <canvas
         ref={canvasRef}
         width={width}
         height={height}
         tabIndex={0}
         className="map-canvas"
+        style={{ display: 'block', cursor: 'inherit' }}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
+        onMouseLeave={onMouseLeave}
         onMouseMove={onMouseMove}
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
         onClick={onClick}
         aria-label="Mapa de tags"
       />
-      <button className="reset-view-btn" onClick={resetView} tabIndex={0} aria-label="Resetear vista">Reset</button>
     </div>
   );
 };

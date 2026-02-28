@@ -12,7 +12,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class AppConfig {
 
     @Value("${app.cors.allowed-origins:http://localhost:5173}")
-    private String allowedOrigins;
+    private String[] allowedOrigins;
 
     @Bean
     public PasswordEncoder passwordEncoder() {

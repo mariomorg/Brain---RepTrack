@@ -9,10 +9,14 @@ import CerebroPage from './features/cerebro/components/CerebroPage';
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
 import { TagNode, Idea } from './mockData';
-import { getTagsByLevel, getIdeasVisible, getTagByPath } from './mockApi';
-import { buildBreadcrumbs } from './lib/breadcrumbs';
+import { fetchMapData } from './features/map/services/mapService';
 
-const INITIAL_CAMERA = { x: 0, y: 0, zoom: 0.8 };
+/** Zoom inicial: ajusta para que todos los nodos quepan cómodamente */
+function fitAllZoom(canvasW: number, canvasH: number, worldSpan: number): number {
+  const zoomX = canvasW / worldSpan;
+  const zoomY = canvasH / worldSpan;
+  return Math.min(zoomX, zoomY) * 0.80;
+}
 
 const useWindowSize = () => {
   const [size, setSize] = React.useState({ width: window.innerWidth, height: window.innerHeight });
@@ -25,24 +29,49 @@ const useWindowSize = () => {
 };
 
 const MapPage: React.FC = () => {
-  const [camera, setCamera] = React.useState(INITIAL_CAMERA);
-  const [focusTagPath, setFocusTagPath] = React.useState<string | null>(null);
-  const [selectedTag, setSelectedTag] = React.useState<TagNode | null>(null);
-  const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
-  const [visibleTags, setVisibleTags] = React.useState<TagNode[]>([]);
-  const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
   const { width, height } = useWindowSize();
-  const canvasWidth = Math.max(300, width - 340);
-  const canvasHeight = Math.max(300, height - 56);
+  const navigate = useNavigate();
+  const canvasWidth  = Math.max(300, width - 240);
+  const canvasHeight = Math.max(300, height);
+
+  const [camera, setCamera]         = React.useState({ x: 0, y: 0, zoom: 0.08 });
+  const initialZoom                 = React.useRef(0.08);
+  const [focusTagPath, setFocusTagPath] = React.useState<string | null>(null);
+  const [selectedTag, setSelectedTag]   = React.useState<TagNode | null>(null);
+  const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
+  const [visibleTags, setVisibleTags]   = React.useState<TagNode[]>([]);
+  const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
 
   React.useEffect(() => {
-    // MapCanvas gestiona el LOD internamente: siempre pasamos todos los tags
-    getTagsByLevel(2).then(setVisibleTags);
+    fetchMapData()
+      .then(({ tags, ideas }) => {
+        // El servicio ya devuelve TagNode[] e Idea[] directamente
+        setVisibleTags(tags);
+        setVisibleIdeas(ideas);
+
+        // Calcular zoom para que todo el mapa quepa en pantalla
+        if (tags.length > 0) {
+          const maxDist = Math.max(...tags.map(t =>
+            Math.sqrt(t.x * t.x + t.y * t.y) + (t.radius ?? 200)
+          ));
+          const worldSpan = maxDist * 2;
+          const zoom = fitAllZoom(canvasWidth, canvasHeight, worldSpan);
+          initialZoom.current = zoom;
+          setCamera({ x: 0, y: 0, zoom });
+        }
+      })
+      .catch(err => {
+        console.warn('API no disponible, cargando datos mock:', err);
+        Promise.all([
+          import('./mockApi').then(m => m.getTagsByLevel(2)),
+          import('./mockApi').then(m => m.getIdeasVisible(0.1, null)),
+        ]).then(([tags, ideas]) => {
+          setVisibleTags(tags);
+          setVisibleIdeas(ideas);
+        });
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  React.useEffect(() => {
-    getIdeasVisible(camera.zoom, focusTagPath).then(setVisibleIdeas);
-  }, [focusTagPath]);
 
   const handleSelectTag = (tag: TagNode) => {
     setSelectedTag(tag);
@@ -52,33 +81,25 @@ const MapPage: React.FC = () => {
   const handleSelectIdea = (idea: Idea) => {
     setSelectedIdea(idea);
   };
+  const handleNavigateToNote = (idea: Idea) => {
+    navigate(`/cerebro?search=${encodeURIComponent(idea.title)}`);
+  };
   const handleFocusTag = (tag: TagNode) => {
     setFocusTagPath(tag.path);
     setSelectedTag(tag);
     setSelectedIdea(null);
   };
-  const handleBreadcrumbClick = (path: string) => {
-    const tag = getTagByPath(path);
-    if (tag) {
-      setFocusTagPath(tag.path);
-      setSelectedTag(tag);
-      setSelectedIdea(null);
-      setCamera({ x: tag.x, y: tag.y, zoom: tag.level === 0 ? 1.0 : tag.level === 1 ? 1.6 : 2.0 });
-    }
-  };
   const handleResetView = () => {
-    setCamera(INITIAL_CAMERA);
+    setCamera({ x: 0, y: 0, zoom: initialZoom.current });
     setFocusTagPath(null);
     setSelectedTag(null);
     setSelectedIdea(null);
   };
-  const breadcrumbs = buildBreadcrumbs(focusTagPath);
 
   return (
     <div style={{ width: '100%', height: '100%', minHeight: '100vh', background: '#fff', overflow: 'hidden' }}>
       <div style={{ display: 'flex', width: '100%', height: '100vh', minHeight: '600px' }}>
-        {/* El Layout ya pone el sidebar a la izquierda */}
-        <div style={{ flex: 1, display: 'flex', height: '100vh', minWidth: 0 }}>
+        <div style={{ flex: 1, display: 'flex', height: '100vh', minWidth: 0, position: 'relative' }}>
           <MapCanvas
             camera={camera}
             setCamera={setCamera}
@@ -90,9 +111,57 @@ const MapPage: React.FC = () => {
             onSelectTag={handleSelectTag}
             onSelectIdea={handleSelectIdea}
             onFocusTag={handleFocusTag}
+            onNavigateToNote={handleNavigateToNote}
             width={canvasWidth}
             height={canvasHeight}
           />
+
+          {/* Botón "Vista general" — overlay esquina superior izquierda */}
+          <button
+            onClick={handleResetView}
+            title="Ver todos los temas"
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 16px',
+              background: 'rgba(255,255,255,0.72)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              border: '1px solid rgba(0,0,0,0.10)',
+              borderRadius: 12,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              color: '#1a1a2e',
+              letterSpacing: 0.2,
+              transition: 'background 0.15s, box-shadow 0.15s',
+              zIndex: 10,
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.92)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 18px rgba(0,0,0,0.15)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.72)';
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 2px 12px rgba(0,0,0,0.10)';
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="8" cy="8" r="6.5" stroke="#1a1a2e" strokeWidth="1.5"/>
+              <circle cx="8" cy="8" r="2.5" fill="#1a1a2e"/>
+              <line x1="8" y1="1.5" x2="8" y2="4"   stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="8" y1="12" x2="8" y2="14.5" stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="1.5" y1="8" x2="4"   y2="8" stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="12"  y1="8" x2="14.5" y2="8" stroke="#1a1a2e" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Vista general
+          </button>
+
           <SidePanel
             selectedTag={selectedTag}
             selectedIdea={selectedIdea}

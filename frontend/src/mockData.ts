@@ -8,6 +8,7 @@ export type TagNode = {
   x: number;
   y: number;
   confianza?: number; // 0.0 - 1.0, used for sizing children
+  radius?: number;    // world-space radius, computed from child count + confianza
 };
 
 export type Idea = {
@@ -22,19 +23,39 @@ export type Idea = {
 
 // Colores por root
 export const ROOT_COLORS: Record<string, string> = {
+  // Legacy mocks
   hogar: '#4F8A8B',
   uni: '#F9A826',
   trabajo: '#F45B69',
   salud: '#43BCCD',
+  // Tech domains
+  dev:     '#4FC3F7',   // azul cielo
+  ia:      '#A78BFA',   // violeta
+  infra:   '#F472B6',   // rosa
+  soft:    '#34D399',   // verde menta
+  // Lifestyle domains
+  cocina:  '#FBBF24',   // amarillo cálido
+  deporte: '#F97316',   // naranja
+  viajes:  '#38BDF8',   // azul claro
 };
 
 // Radios base en coordenadas mundo:
-//   Nivel 0: fijo, muy grande (700 unidades)
-//   Nivel 1: radio_padre * confianza * 0.28  (máx ~196 para confianza 1.0)
-//   Nivel 2: radio_padre * confianza * 0.30  (máx ~58 para confianza 1.0)
-export const BASE_RADIUS_L0 = 700;
+//   Nivel 0: se calcula según el nº de hijos L1  (ver computeL0Radius)
+//   Nivel 1: radius_L0 * confianza * CHILD_RATIO_L1
+//   Nivel 2: radius_L1 * confianza * CHILD_RATIO_L2
+//
+// Fórmula L0: BASE_L0_MIN + (nHijos - 1) * CHILD_BUMP
+// → con 3 hijos ≈ 500, con 4 hijos ≈ 600, con 5 hijos ≈ 700
+export const BASE_RADIUS_L0 = 700;   // compatibilidad: valor máximo / referencia global
+export const BASE_L0_MIN   = 400;    // radio mínimo cuando sólo hay 1 hijo
+export const CHILD_BUMP    = 80;     // radio extra por cada hijo adicional
 export const CHILD_RATIO_L1 = 0.28;
 export const CHILD_RATIO_L2 = 0.30;
+
+/** Radio de un nodo L0 en función del número de hijos directos */
+export function computeL0Radius(nChildren: number): number {
+  return BASE_L0_MIN + Math.max(0, nChildren - 1) * CHILD_BUMP;
+}
 
 // Helper de posición polar
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
@@ -42,76 +63,102 @@ function polar(cx: number, cy: number, r: number, angleDeg: number) {
   return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
 }
 
-// ── NIVEL 0: roots, muy separados ────────────────────────────────────────────
+// ── CONTEO de hijos por root (definido antes de construir arrays) ─────────────
+// hogar: 3 hijos  →  radius ≈ 560
+// uni:   2 hijos  →  radius ≈ 480
+// trabajo: 2 hijos → radius ≈ 480
+// salud: 2 hijos  →  radius ≈ 480
+const ROOT_CHILD_COUNT: Record<string, number> = {
+  hogar: 3, uni: 2, trabajo: 2, salud: 2,
+};
+
+// Distancia entre centros de roots: suficiente para que no se solapen.
+// Separación = (r_a + r_b) * 1.15 para dejar un margen cómodo.
+// Para la disposición en cuadrado usamos el máximo radio como referencia.
+const maxR0 = computeL0Radius(
+  Math.max(...Object.values(ROOT_CHILD_COUNT))
+);
+// Roots dispuestas en cuadrado; cada eje ±ORBIT_DIST del centro
+export const MAP_ORBIT_DIST = maxR0 * 2.05;   // antes fijo en 1800; ahora ~1300-1400 px
+export const MAP_MAX_R0     = maxR0;
+const ORBIT_DIST = MAP_ORBIT_DIST;
+
+// ── NIVEL 0: roots ────────────────────────────────────────────────────────────
 const roots: TagNode[] = [
-  { id: 'hogar', name: 'Hogar', path: 'hogar', parentPath: null, level: 0, x: -1800, y: 0 },
-  { id: 'uni', name: 'Uni', path: 'uni', parentPath: null, level: 0, x: 1800, y: 0 },
-  { id: 'trabajo', name: 'Trabajo', path: 'trabajo', parentPath: null, level: 0, x: 0, y: 1800 },
-  { id: 'salud', name: 'Salud', path: 'salud', parentPath: null, level: 0, x: 0, y: -1800 },
+  { id: 'hogar',   name: 'Hogar',   path: 'hogar',   parentPath: null, level: 0, x: -ORBIT_DIST, y: 0,            radius: computeL0Radius(ROOT_CHILD_COUNT['hogar']) },
+  { id: 'uni',     name: 'Uni',     path: 'uni',     parentPath: null, level: 0, x:  ORBIT_DIST, y: 0,            radius: computeL0Radius(ROOT_CHILD_COUNT['uni']) },
+  { id: 'trabajo', name: 'Trabajo', path: 'trabajo', parentPath: null, level: 0, x: 0,           y:  ORBIT_DIST,  radius: computeL0Radius(ROOT_CHILD_COUNT['trabajo']) },
+  { id: 'salud',   name: 'Salud',   path: 'salud',   parentPath: null, level: 0, x: 0,           y: -ORBIT_DIST,  radius: computeL0Radius(ROOT_CHILD_COUNT['salud']) },
 ];
 
-// ── NIVEL 1: hijos dentro del padre (radio 0 = 700, hijos a ~280 del centro) ─
-// Confianza varía por hijo para mostrar diferencia de tamaño
-const L1_ORBIT = BASE_RADIUS_L0 * 0.40; // distancia del centro del padre al centro del hijo
+// ── NIVEL 1: hijos dentro del padre ──────────────────────────────────────────
+// Órbita: 40% del radio del padre (igual que antes, pero ahora el radio del padre varía)
+function l0Root(id: string): TagNode { return roots.find(r => r.id === id)! }
+function l0R(id: string): number     { return l0Root(id).radius! }
+const L1_ORBIT_RATIO = 0.42;   // fracción del radio L0 como órbita de hijos L1
 
 const hijos: TagNode[] = [
-  // Hogar
-  { id: 'hogar_electro', name: 'Electrodomésticos', path: 'hogar/electrodomesticos', parentPath: 'hogar', level: 1, confianza: 0.9, ...polar(-1800, 0, L1_ORBIT, 30) },
-  { id: 'hogar_cocina', name: 'Cocina', path: 'hogar/cocina', parentPath: 'hogar', level: 1, confianza: 0.65, ...polar(-1800, 0, L1_ORBIT, 150) },
-  { id: 'hogar_limpieza', name: 'Limpieza', path: 'hogar/limpieza', parentPath: 'hogar', level: 1, confianza: 0.45, ...polar(-1800, 0, L1_ORBIT, 270) },
-  // Uni
-  { id: 'uni_so', name: 'Sistemas Operativos', path: 'uni/sistemas_operativos', parentPath: 'uni', level: 1, confianza: 0.8, ...polar(1800, 0, L1_ORBIT, 60) },
-  { id: 'uni_bd', name: 'Bases de Datos', path: 'uni/bases_de_datos', parentPath: 'uni', level: 1, confianza: 0.55, ...polar(1800, 0, L1_ORBIT, 180) },
-  // Trabajo
-  { id: 'trabajo_devops', name: 'DevOps', path: 'trabajo/devops', parentPath: 'trabajo', level: 1, confianza: 0.95, ...polar(0, 1800, L1_ORBIT, 90) },
-  { id: 'trabajo_frontend', name: 'Frontend', path: 'trabajo/frontend', parentPath: 'trabajo', level: 1, confianza: 0.7, ...polar(0, 1800, L1_ORBIT, 210) },
-  // Salud
-  { id: 'salud_entrenamiento', name: 'Entrenamiento', path: 'salud/entrenamiento', parentPath: 'salud', level: 1, confianza: 0.85, ...polar(0, -1800, L1_ORBIT, 120) },
-  { id: 'salud_nutricion', name: 'Nutrición', path: 'salud/nutricion', parentPath: 'salud', level: 1, confianza: 0.6, ...polar(0, -1800, L1_ORBIT, 300) },
+  // Hogar (3 hijos → r≈560, órbita≈235)
+  { id: 'hogar_electro',    name: 'Electrodomésticos', path: 'hogar/electrodomesticos',   parentPath: 'hogar',   level: 1, confianza: 0.9,  ...polar(-ORBIT_DIST, 0,           l0R('hogar')   * L1_ORBIT_RATIO,  30) },
+  { id: 'hogar_cocina',     name: 'Cocina',            path: 'hogar/cocina',              parentPath: 'hogar',   level: 1, confianza: 0.65, ...polar(-ORBIT_DIST, 0,           l0R('hogar')   * L1_ORBIT_RATIO, 150) },
+  { id: 'hogar_limpieza',   name: 'Limpieza',          path: 'hogar/limpieza',            parentPath: 'hogar',   level: 1, confianza: 0.45, ...polar(-ORBIT_DIST, 0,           l0R('hogar')   * L1_ORBIT_RATIO, 270) },
+  // Uni (2 hijos → r≈480, órbita≈202)
+  { id: 'uni_so',           name: 'Sistemas Op.',      path: 'uni/sistemas_operativos',   parentPath: 'uni',     level: 1, confianza: 0.8,  ...polar( ORBIT_DIST, 0,           l0R('uni')     * L1_ORBIT_RATIO,  60) },
+  { id: 'uni_bd',           name: 'Bases de Datos',    path: 'uni/bases_de_datos',        parentPath: 'uni',     level: 1, confianza: 0.55, ...polar( ORBIT_DIST, 0,           l0R('uni')     * L1_ORBIT_RATIO, 180) },
+  // Trabajo (2 hijos → r≈480, órbita≈202)
+  { id: 'trabajo_devops',   name: 'DevOps',            path: 'trabajo/devops',            parentPath: 'trabajo', level: 1, confianza: 0.95, ...polar(0, ORBIT_DIST,            l0R('trabajo') * L1_ORBIT_RATIO,  90) },
+  { id: 'trabajo_frontend', name: 'Frontend',          path: 'trabajo/frontend',          parentPath: 'trabajo', level: 1, confianza: 0.7,  ...polar(0, ORBIT_DIST,            l0R('trabajo') * L1_ORBIT_RATIO, 210) },
+  // Salud (2 hijos → r≈480, órbita≈202)
+  { id: 'salud_entrenamiento', name: 'Entrenamiento',  path: 'salud/entrenamiento',       parentPath: 'salud',   level: 1, confianza: 0.85, ...polar(0, -ORBIT_DIST,           l0R('salud')   * L1_ORBIT_RATIO, 120) },
+  { id: 'salud_nutricion',  name: 'Nutrición',         path: 'salud/nutricion',           parentPath: 'salud',   level: 1, confianza: 0.6,  ...polar(0, -ORBIT_DIST,           l0R('salud')   * L1_ORBIT_RATIO, 300) },
 ];
+
+// Añadir campo radius a hijos (calculado igual que tagRadius)
+hijos.forEach(h => {
+  h.radius = BASE_RADIUS_L0 * CHILD_RATIO_L1 * (h.confianza ?? 0.5);
+});
 
 // ── NIVEL 2: nietos dentro de su padre (nivel 1) ──────────────────────────────
-// Radio de un hijo nivel-1 (confianza * BASE_RADIUS_L0 * CHILD_RATIO_L1)
-// Órbita nietos: ~35-40% del radio del padre nivel-1
-function l1Pos(id: string) {
-  return hijos.find(h => h.id === id)!;
-}
-function l1Radius(confianza: number) {
-  return BASE_RADIUS_L0 * CHILD_RATIO_L1 * confianza;
-}
-const L2_ORBIT_RATIO = 0.38; // fracción del radio del padre nivel-1
+function l1Pos(id: string)  { return hijos.find(h => h.id === id)! }
+function l1R(id: string)    { return l1Pos(id).radius! }
+const L2_ORBIT_RATIO = 0.38;
 
 const nietos: TagNode[] = [
-  // hogar/electrodomesticos (confianza 0.9, radio≈176)
-  { id: 'hogar_electro_lavadoras', name: 'Lavadoras', path: 'hogar/electrodomesticos/lavadoras', parentPath: 'hogar/electrodomesticos', level: 2, confianza: 0.9,
-    ...polar(l1Pos('hogar_electro').x, l1Pos('hogar_electro').y, l1Radius(0.9) * L2_ORBIT_RATIO, 60) },
-  { id: 'hogar_electro_neveras', name: 'Neveras', path: 'hogar/electrodomesticos/neveras', parentPath: 'hogar/electrodomesticos', level: 2, confianza: 0.55,
-    ...polar(l1Pos('hogar_electro').x, l1Pos('hogar_electro').y, l1Radius(0.9) * L2_ORBIT_RATIO, 200) },
-  // hogar/cocina (confianza 0.65, radio≈127)
-  { id: 'hogar_cocina_sartenes', name: 'Sartenes', path: 'hogar/cocina/sartenes', parentPath: 'hogar/cocina', level: 2, confianza: 0.75,
-    ...polar(l1Pos('hogar_cocina').x, l1Pos('hogar_cocina').y, l1Radius(0.65) * L2_ORBIT_RATIO, 120) },
-  // hogar/limpieza (confianza 0.45, radio≈88)
-  { id: 'hogar_limpieza_productos', name: 'Productos', path: 'hogar/limpieza/productos', parentPath: 'hogar/limpieza', level: 2, confianza: 0.85,
-    ...polar(l1Pos('hogar_limpieza').x, l1Pos('hogar_limpieza').y, l1Radius(0.45) * L2_ORBIT_RATIO, 240) },
-  // uni/sistemas_operativos (confianza 0.8, radio≈156)
-  { id: 'uni_so_planif', name: 'Planificación CPU', path: 'uni/sistemas_operativos/planificacion_cpu', parentPath: 'uni/sistemas_operativos', level: 2, confianza: 0.7,
-    ...polar(l1Pos('uni_so').x, l1Pos('uni_so').y, l1Radius(0.8) * L2_ORBIT_RATIO, 90) },
-  // uni/bases_de_datos (confianza 0.55, radio≈107)
-  { id: 'uni_bd_indexes', name: 'Indexes', path: 'uni/bases_de_datos/indexes', parentPath: 'uni/bases_de_datos', level: 2, confianza: 0.8,
-    ...polar(l1Pos('uni_bd').x, l1Pos('uni_bd').y, l1Radius(0.55) * L2_ORBIT_RATIO, 210) },
-  // trabajo/devops (confianza 0.95, radio≈186)
-  { id: 'trabajo_devops_docker', name: 'Docker', path: 'trabajo/devops/docker', parentPath: 'trabajo/devops', level: 2, confianza: 0.6,
-    ...polar(l1Pos('trabajo_devops').x, l1Pos('trabajo_devops').y, l1Radius(0.95) * L2_ORBIT_RATIO, 120) },
-  // trabajo/frontend (confianza 0.7, radio≈137)
-  { id: 'trabajo_frontend_react', name: 'React', path: 'trabajo/frontend/react', parentPath: 'trabajo/frontend', level: 2, confianza: 0.95,
-    ...polar(l1Pos('trabajo_frontend').x, l1Pos('trabajo_frontend').y, l1Radius(0.7) * L2_ORBIT_RATIO, 240) },
-  // salud/entrenamiento (confianza 0.85, radio≈166)
-  { id: 'salud_entrenamiento_rutinas', name: 'Rutinas', path: 'salud/entrenamiento/rutinas', parentPath: 'salud/entrenamiento', level: 2, confianza: 0.9,
-    ...polar(l1Pos('salud_entrenamiento').x, l1Pos('salud_entrenamiento').y, l1Radius(0.85) * L2_ORBIT_RATIO, 60) },
-  // salud/nutricion (confianza 0.6, radio≈117)
-  { id: 'salud_nutricion_macros', name: 'Macros', path: 'salud/nutricion/macros', parentPath: 'salud/nutricion', level: 2, confianza: 0.65,
-    ...polar(l1Pos('salud_nutricion').x, l1Pos('salud_nutricion').y, l1Radius(0.6) * L2_ORBIT_RATIO, 300) },
+  // hogar/electrodomesticos
+  { id: 'hogar_electro_lavadoras', name: 'Lavadoras',       path: 'hogar/electrodomesticos/lavadoras', parentPath: 'hogar/electrodomesticos', level: 2, confianza: 0.9,
+    ...polar(l1Pos('hogar_electro').x, l1Pos('hogar_electro').y, l1R('hogar_electro') * L2_ORBIT_RATIO, 60) },
+  { id: 'hogar_electro_neveras',   name: 'Neveras',         path: 'hogar/electrodomesticos/neveras',   parentPath: 'hogar/electrodomesticos', level: 2, confianza: 0.55,
+    ...polar(l1Pos('hogar_electro').x, l1Pos('hogar_electro').y, l1R('hogar_electro') * L2_ORBIT_RATIO, 200) },
+  // hogar/cocina
+  { id: 'hogar_cocina_sartenes',   name: 'Sartenes',        path: 'hogar/cocina/sartenes',             parentPath: 'hogar/cocina',            level: 2, confianza: 0.75,
+    ...polar(l1Pos('hogar_cocina').x, l1Pos('hogar_cocina').y, l1R('hogar_cocina') * L2_ORBIT_RATIO, 120) },
+  // hogar/limpieza
+  { id: 'hogar_limpieza_productos',name: 'Productos',       path: 'hogar/limpieza/productos',          parentPath: 'hogar/limpieza',          level: 2, confianza: 0.85,
+    ...polar(l1Pos('hogar_limpieza').x, l1Pos('hogar_limpieza').y, l1R('hogar_limpieza') * L2_ORBIT_RATIO, 240) },
+  // uni/sistemas_operativos
+  { id: 'uni_so_planif',           name: 'Planificación CPU',path: 'uni/sistemas_operativos/planificacion_cpu', parentPath: 'uni/sistemas_operativos', level: 2, confianza: 0.7,
+    ...polar(l1Pos('uni_so').x, l1Pos('uni_so').y, l1R('uni_so') * L2_ORBIT_RATIO, 90) },
+  // uni/bases_de_datos
+  { id: 'uni_bd_indexes',          name: 'Indexes',         path: 'uni/bases_de_datos/indexes',        parentPath: 'uni/bases_de_datos',      level: 2, confianza: 0.8,
+    ...polar(l1Pos('uni_bd').x, l1Pos('uni_bd').y, l1R('uni_bd') * L2_ORBIT_RATIO, 210) },
+  // trabajo/devops
+  { id: 'trabajo_devops_docker',   name: 'Docker',          path: 'trabajo/devops/docker',             parentPath: 'trabajo/devops',          level: 2, confianza: 0.6,
+    ...polar(l1Pos('trabajo_devops').x, l1Pos('trabajo_devops').y, l1R('trabajo_devops') * L2_ORBIT_RATIO, 120) },
+  // trabajo/frontend
+  { id: 'trabajo_frontend_react',  name: 'React',           path: 'trabajo/frontend/react',            parentPath: 'trabajo/frontend',        level: 2, confianza: 0.95,
+    ...polar(l1Pos('trabajo_frontend').x, l1Pos('trabajo_frontend').y, l1R('trabajo_frontend') * L2_ORBIT_RATIO, 240) },
+  // salud/entrenamiento
+  { id: 'salud_entrenamiento_rutinas', name: 'Rutinas',     path: 'salud/entrenamiento/rutinas',       parentPath: 'salud/entrenamiento',     level: 2, confianza: 0.9,
+    ...polar(l1Pos('salud_entrenamiento').x, l1Pos('salud_entrenamiento').y, l1R('salud_entrenamiento') * L2_ORBIT_RATIO, 60) },
+  // salud/nutricion
+  { id: 'salud_nutricion_macros',  name: 'Macros',          path: 'salud/nutricion/macros',            parentPath: 'salud/nutricion',         level: 2, confianza: 0.65,
+    ...polar(l1Pos('salud_nutricion').x, l1Pos('salud_nutricion').y, l1R('salud_nutricion') * L2_ORBIT_RATIO, 300) },
 ];
+
+// Añadir campo radius a nietos
+nietos.forEach(n => {
+  n.radius = BASE_RADIUS_L0 * CHILD_RATIO_L1 * (n.confianza ?? 0.5) * CHILD_RATIO_L2;
+});
 
 export const TAGS: TagNode[] = [
   ...roots,
@@ -121,7 +168,9 @@ export const TAGS: TagNode[] = [
 
 // ── Helpers para posicionar ideas dentro de su tag ────────────────────────────
 function tagWorldRadius(tag: TagNode): number {
-  if (tag.level === 0) return BASE_RADIUS_L0;
+  // Usar el campo precalculado si está disponible
+  if (tag.radius != null) return tag.radius;
+  if (tag.level === 0) return computeL0Radius(0);
   if (tag.level === 1) return BASE_RADIUS_L0 * CHILD_RATIO_L1 * (tag.confianza ?? 0.5);
   return BASE_RADIUS_L0 * CHILD_RATIO_L1 * (tag.confianza ?? 0.5) * CHILD_RATIO_L2;
 }

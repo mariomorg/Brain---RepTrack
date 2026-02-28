@@ -25,7 +25,11 @@ interface TagChipProps {
 
 export function TagChip({ tag, onClick }: TagChipProps) {
     const palette = PALETTES[hashTag(tag)];
-    const label = tag.startsWith('#') ? tag : `#${tag}`;
+    // Show only the last segment of the path (e.g. "dev/frontend/react" → "react")
+    const rawTag = tag.startsWith('#') ? tag.slice(1) : tag;
+    const parts = rawTag.split('/');
+    const lastSegment = parts[parts.length - 1] ?? rawTag;
+    const label = `#${lastSegment}`;
     return (
         <span
             className="tag-chip"
