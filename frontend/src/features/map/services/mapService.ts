@@ -94,7 +94,7 @@ export async function fetchMapData(): Promise<MapData> {
   // 1. Recolectar todos los tags únicos que aparecen en las notas
   const allTagPaths = new Set<string>();
   for (const note of notes) {
-    for (const t of (note.tags ?? [])) allTagPaths.add(t);
+    for (const t of (note.tags ?? [])) allTagPaths.add(t.name);
   }
 
   // 2. Inferir árbol de paths: agrupar por nivel
@@ -124,7 +124,7 @@ export async function fetchMapData(): Promise<MapData> {
   const notesPerTag = new Map<string, number>();
   for (const note of notes) {
     for (const t of (note.tags ?? [])) {
-      notesPerTag.set(t, (notesPerTag.get(t) ?? 0) + 1);
+      notesPerTag.set(t.name, (notesPerTag.get(t.name) ?? 0) + 1);
     }
   }
 
@@ -263,7 +263,7 @@ export async function fetchMapData(): Promise<MapData> {
     // Buscar el tag de mayor nivel (más profundo) entre los asignados
     let bestTag: TagNode | null = null;
     for (const t of noteTags) {
-      const node = nodeMap.get(t);
+      const node = nodeMap.get(t.name);
       if (node && (!bestTag || node.level > bestTag.level)) bestTag = node;
     }
 
@@ -283,7 +283,7 @@ export async function fetchMapData(): Promise<MapData> {
       title:     note.title,
       excerpt:   note.summary ?? '',
       createdAt,
-      tagPaths:  noteTags,
+      tagPaths:  noteTags.map(t => t.name),
       x:         pos.x,
       y:         pos.y,
     };
