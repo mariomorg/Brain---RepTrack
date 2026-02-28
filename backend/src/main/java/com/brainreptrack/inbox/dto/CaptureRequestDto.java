@@ -62,4 +62,10 @@ public class CaptureRequestDto {
      * {@code {"language": "python", "platform": "youtube"}}).
      */
     private Map<String, String> metadata;
+
+    /**
+     * Optional path on disk to the original uploaded file.
+     * Set by the file-capture endpoint after saving the bytes to storage.
+     */
+    private String filePath;
 }

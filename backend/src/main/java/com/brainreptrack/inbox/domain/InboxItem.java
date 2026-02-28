@@ -43,6 +43,10 @@ public class InboxItem {
     @Column(name = "source_url", length = 2048)
     private String sourceUrl;
 
+    /** Path on disk to the original uploaded file (only for FILE-type items). */
+    @Column(name = "file_path", length = 512)
+    private String filePath;
+
     /**
      * Arbitrary key-value metadata stored as a JSON string (language, platform,
      * etc.).
