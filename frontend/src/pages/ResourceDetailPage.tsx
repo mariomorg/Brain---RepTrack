@@ -81,8 +81,19 @@ export default function ResourceDetailPage() {
 
         <section className="resource-section">
           <strong>Recurso original:</strong>
-          <ReactMarkdown>{note.originalContent || 'Sin contenido original.'}</ReactMarkdown>
+          {note.detectedType === 'FILE' ? (
+            <p className="file-title-display">📄 {note.originalContent || note.title}</p>
+          ) : (
+            <ReactMarkdown>{note.originalContent || 'Sin contenido original.'}</ReactMarkdown>
+          )}
         </section>
+
+        {note.aiSummary && (
+          <section className="resource-section ai-summary-section">
+            <strong>Resumen extenso:</strong>
+            <ReactMarkdown>{note.aiSummary}</ReactMarkdown>
+          </section>
+        )}
 
         {note.summary && (
           <section className="resource-section">

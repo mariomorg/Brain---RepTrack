@@ -24,4 +24,10 @@ public class NoteResponseDto {
 
     /** Contenido original del recurso (rawText de InboxItem relacionado). */
     private String originalContent;
+
+    /** Resumen extenso generado por IA (desde InboxItem). */
+    private String aiSummary;
+
+    /** Tipo detectado del contenido original (TEXT, LINK, FILE, etc.). */
+    private String detectedType;
 }

@@ -44,6 +44,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     private final OllamaClient ollamaClient;
     private final ObjectMapper objectMapper;
     private final SuggestionAnalyzer suggestionAnalyzer;
+    private final SummaryGenerationService summaryGenerationService;
     private final Path markdownOutputDir;
 
     public AiProcessingServiceImpl(
@@ -53,6 +54,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             OllamaClient ollamaClient,
             ObjectMapper objectMapper,
             SuggestionAnalyzer suggestionAnalyzer,
+            SummaryGenerationService summaryGenerationService,
             @Value("${markdown.output-dir:./markdown-notes}") String markdownOutputDirStr) {
         this.inboxItemRepository = inboxItemRepository;
         this.noteRepository = noteRepository;
@@ -60,6 +62,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         this.ollamaClient = ollamaClient;
         this.objectMapper = objectMapper;
         this.suggestionAnalyzer = suggestionAnalyzer;
+        this.summaryGenerationService = summaryGenerationService;
         this.markdownOutputDir = Paths.get(markdownOutputDirStr);
         try {
             Files.createDirectories(this.markdownOutputDir);
@@ -141,6 +144,21 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             String proposalsJson = objectMapper.writeValueAsString(result);
             item.setProposalsJson(proposalsJson);
 
+            // ── 5b. Generate extensive topic summary (with web search if needed) ─
+            try {
+                String summary = summaryGenerationService.generateSummary(
+                        item.getRawText(), item.getDetectedType());
+                if (summary != null && !summary.isBlank()) {
+                    item.setAiSummary(summary);
+                    log.info("[AI] Extensive summary generated for InboxItem {} ({} chars)",
+                            inboxItemId, summary.length());
+                }
+            } catch (Exception summaryEx) {
+                log.warn("[AI] Summary generation failed for InboxItem {}: {}",
+                        inboxItemId, summaryEx.getMessage());
+                // Non-fatal — processing continues without a summary
+            }
+
             // ── 6. Mark as awaiting user approval ────────────────────────────────
             item.setStatus("AWAITING_APPROVAL");
             item.setProcessedAt(LocalDateTime.now());
@@ -195,6 +213,13 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             String mdPrompt = buildMarkdownPrompt(item, classification);
             OllamaResponse mdResponse = ollamaClient.generate(mdPrompt);
             markdown = stripCodeFences(mdResponse.getResponse());
+
+            // Append the extensive AI summary as a dedicated section in the markdown
+            String aiSummary = item.getAiSummary();
+            if (aiSummary != null && !aiSummary.isBlank()) {
+                markdown = markdown + "\n\n## Resumen extenso\n\n" + aiSummary.strip() + "\n";
+            }
+
             saveMarkdownToFile(item, markdown);
         } catch (Exception e) {
             log.error("[AI] Markdown generation failed for {}: {}", inboxItemId, e.getMessage());
@@ -212,6 +237,9 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 .proposalsJson(item.getProposalsJson())
                 .finalJson(item.getFinalJson())
                 .outputPath(item.getOutputPath())
+                .sourceUrl(item.getSourceUrl())
+                .metadata(item.getMetadata())
+                .aiSummary(item.getAiSummary())
                 .createdAt(item.getCreatedAt())
                 .processedAt(item.getProcessedAt())
                 .build();
@@ -223,6 +251,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 .item(itemDto)
                 .classification(classification)
                 .markdown(markdown)
+                .aiSummary(item.getAiSummary())
                 .suggestions(suggestions)
                 .build();
     }
@@ -250,6 +279,12 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         String prompt = buildMarkdownPrompt(item, result);
         OllamaResponse ollamaResponse = ollamaClient.generate(prompt);
         String markdown = stripCodeFences(ollamaResponse.getResponse());
+
+        // Append the extensive AI summary as a dedicated section
+        String aiSummary = item.getAiSummary();
+        if (aiSummary != null && !aiSummary.isBlank()) {
+            markdown = markdown + "\n\n## Resumen extenso\n\n" + aiSummary.strip() + "\n";
+        }
 
         // Save to file and store path
         String filePath = saveMarkdownToFile(item, markdown);
@@ -670,12 +705,21 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             }
         }
 
+        // Include the extensive AI summary if available
+        String aiSummary = item.getAiSummary();
+        if (aiSummary != null && !aiSummary.isBlank()) {
+            context.append("\nExtensive topic summary (use this to enrich the note):\n");
+            context.append(aiSummary).append("\n");
+        }
+
         String detectedType = item.getDetectedType() != null ? item.getDetectedType() : "TEXT";
         String createdAt = item.getCreatedAt() != null ? item.getCreatedAt().toString() : "unknown";
 
         return """
                 You are a Markdown note generator for a personal knowledge base.
                 Convert the following raw content into a clean, well-structured Markdown note.
+                If an extensive topic summary is provided, USE IT to create a richer, more
+                detailed note that goes beyond the original raw content.
 
                 Context provided:
                 """ + context + """
@@ -684,6 +728,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 Rules:
                 - Start with a single # heading derived from the content (NOT from the classification path).
                 - Use ## subheadings if the content has clear sections.
+                - If an extensive summary is provided, integrate its key points into the note
+                  as additional sections (## Contexto, ## Detalles, etc.).
                 - Convert any lists, enumerations or steps into proper Markdown lists (- or 1.).
                 - Preserve URLs as [text](url) links.
                 - At the bottom, add a metadata block like:

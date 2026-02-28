@@ -22,6 +22,7 @@ export interface InboxItem {
     outputPath: string | null;
     sourceUrl: string | null;
     metadata: string | null;
+    aiSummary: string | null;
     createdAt: string;
     processedAt: string | null;
 }
@@ -92,5 +93,6 @@ export interface ProcessResult {
     item: InboxItem;
     classification: AiClassification | null;
     markdown: string;
+    aiSummary: string | null;
     suggestions: SuggestionDto[];
 }

@@ -43,6 +43,9 @@ ALTER TABLE inbox_items ADD CONSTRAINT status_check
 ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS source_url   VARCHAR(2048);
 ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS metadata     TEXT;
 
+-- Extensive AI-generated summary of the topic
+ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS ai_summary   TEXT;
+
 -- =========================================================
 --  TABLE: notes
 -- =========================================================

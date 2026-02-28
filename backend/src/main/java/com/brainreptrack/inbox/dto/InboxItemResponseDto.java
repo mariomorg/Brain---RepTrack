@@ -19,6 +19,7 @@ public class InboxItemResponseDto {
     private String outputPath;
     private String sourceUrl;
     private String metadata;
+    private String aiSummary;
     private LocalDateTime createdAt;
     private LocalDateTime processedAt;
 }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInbox } from '../hooks/useInbox';
-import { InboxItem, SuggestionDto, ProcessResult, CaptureRequest } from '../types/inbox.types';
+import { InboxItem, SuggestionDto, ProcessResult } from '../types/inbox.types';
 import { TagChip } from '@shared/components/TagChip';
 import { noteService } from '@features/cerebro/services/noteService';
 import { Note } from '@features/cerebro/types/note.types';
@@ -121,6 +121,15 @@ interface AttachedFile {
 /* ─────────────────────────── Helpers ─────────────────────────── */
 function isUrl(text: string): boolean {
     try { new URL(text); return true; } catch { return false; }
+}
+
+/** For FILE items, show only the first line (filename) instead of the full extracted text. */
+function displayText(item: InboxItem): string {
+    if (item.detectedType === 'FILE' && item.rawText) {
+        const firstLine = item.rawText.split('\n')[0].trim();
+        return firstLine || item.rawText;
+    }
+    return item.rawText;
 }
 
 /** Module-level helper keeps nesting depth within limits. */
@@ -363,7 +372,7 @@ function PendingApprovalCard({
                         <ExtIcon />
                         {typeLabelForItem(item)}
                     </div>
-                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{displayText(item)}</div>
                     <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
                 </div>
                 <button
@@ -415,6 +424,14 @@ function PendingApprovalCard({
                     <div className="ai-proposal-box__motivo">{motivo}</div>
                 )}
             </div>
+
+            {/* AI extensive summary */}
+            {item.aiSummary && (
+                <div className="ai-summary-box">
+                    <div className="ai-summary-box__label"><SparkleIcon /> Resumen extenso del tema</div>
+                    <div className="ai-summary-box__content">{item.aiSummary}</div>
+                </div>
+            )}
 
             {/* Action buttons — single "Procesar" replaces approve/reject */}
             <div className="ai-proposal-actions">
@@ -471,7 +488,7 @@ function ProcessedCard({
                         <ExtIcon /> {typeLabelForItem(item)}
                         <span className="processed-badge">PROCESADO</span>
                     </div>
-                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{displayText(item)}</div>
                     <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
                 </div>
                 <button className="capture-toolbar-btn" title="Eliminar" onClick={onRemove} style={{ color: '#EF4444', flexShrink: 0 }}>
@@ -504,6 +521,14 @@ function ProcessedCard({
                         </div>
                     )}
                     {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
+                </div>
+            )}
+
+            {/* AI extensive summary */}
+            {item.aiSummary && (
+                <div className="ai-summary-box">
+                    <div className="ai-summary-box__label"><SparkleIcon /> Resumen extenso del tema</div>
+                    <div className="ai-summary-box__content">{item.aiSummary}</div>
                 </div>
             )}
 
@@ -545,7 +570,7 @@ function ProcessedCard({
 
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
+    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, captureFile, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -829,29 +854,54 @@ export default function InboxPage() {
         const trimmed = text.trim();
         if (!trimmed && attachments.length === 0) return;
 
-        // Build content: if there are files, append their names
-        let content = trimmed;
-        if (attachments.length > 0 && !content) {
-            content = attachments.map(a => a.file.name).join(', ');
-        } else if (attachments.length > 0) {
-            content += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
-        }
-
-        const contentType = detectContentType(trimmed, attachments);
-
-        // Extract sourceUrl for link-like types
-        let sourceUrl: string | undefined;
-        if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
-            sourceUrl = trimmed;
-        }
+        // Check for document files (PDF, TXT, etc.) that should be uploaded for text extraction
+        const EXTRACTABLE_EXTENSIONS = ['.pdf', '.txt', '.md', '.csv', '.json', '.xml', '.log', '.yaml', '.yml', '.html', '.htm', '.java', '.py', '.js', '.ts', '.css', '.sql'];
+        const documentFiles = attachments.filter(a =>
+            a.type === 'file' && EXTRACTABLE_EXTENSIONS.some(ext => a.file.name.toLowerCase().endsWith(ext))
+        );
 
         try {
-            const captureReq: CaptureRequest = {
-                content,
-                contentType,
-                sourceUrl,
-            };
-            await capture(captureReq);
+            if (documentFiles.length > 0) {
+                // Upload each document file for server-side text extraction
+                for (const doc of documentFiles) {
+                    await captureFile(doc.file, trimmed || undefined);
+                }
+                // If there are also non-document attachments or standalone text, send those too
+                const nonDocAttachments = attachments.filter(a => !documentFiles.includes(a));
+                if (nonDocAttachments.length > 0 || (trimmed && documentFiles.length > 1)) {
+                    let content = trimmed;
+                    if (nonDocAttachments.length > 0 && !content) {
+                        content = nonDocAttachments.map(a => a.file.name).join(', ');
+                    } else if (nonDocAttachments.length > 0) {
+                        content += '\n[Adjuntos: ' + nonDocAttachments.map(a => a.file.name).join(', ') + ']';
+                    }
+                    if (content) {
+                        const contentType = detectContentType(content, nonDocAttachments);
+                        let sourceUrl: string | undefined;
+                        if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(content)) {
+                            sourceUrl = content;
+                        }
+                        await capture({ content, contentType, sourceUrl });
+                    }
+                }
+            } else {
+                // No document files — original text-only capture flow
+                let content = trimmed;
+                if (attachments.length > 0 && !content) {
+                    content = attachments.map(a => a.file.name).join(', ');
+                } else if (attachments.length > 0) {
+                    content += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
+                }
+
+                const contentType = detectContentType(trimmed, attachments);
+                let sourceUrl: string | undefined;
+                if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
+                    sourceUrl = trimmed;
+                }
+
+                await capture({ content, contentType, sourceUrl });
+            }
+
             setText('');
             setAttachments([]);
             textareaRef.current?.focus();
@@ -1039,6 +1089,45 @@ export default function InboxPage() {
                     font-style: italic;
                     line-height: 1.4;
                 }
+
+                /* ── AI Summary box ── */
+                .ai-summary-box {
+                    background: linear-gradient(135deg, rgba(99,102,241,.10) 0%, rgba(139,92,246,.10) 100%);
+                    border: 1px solid rgba(139,92,246,.35);
+                    border-radius: 10px;
+                    padding: 12px 14px;
+                    margin-bottom: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .ai-summary-box__label {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: .05em;
+                    color: #a78bfa;
+                }
+                .ai-summary-box__content {
+                    font-size: 13px;
+                    line-height: 1.6;
+                    color: #000;
+                    white-space: pre-line;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    scrollbar-width: thin;
+                }
+                .ai-summary-box__content::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .ai-summary-box__content::-webkit-scrollbar-thumb {
+                    background: rgba(139,92,246,.3);
+                    border-radius: 2px;
+                }
+
                 .ai-proposal-actions {
                     display: flex;
                     gap: 8px;
@@ -1297,7 +1386,7 @@ export default function InboxPage() {
                                                                 <ExtIcon />
                                                                 {typeLabelForItem(item)}
                                                             </div>
-                                                            <div className="inbox-item__text">{item.rawText}</div>
+                                                            <div className="inbox-item__text">{displayText(item)}</div>
                                                             {isUrl(item.rawText.trim()) && (
                                                                 <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
                                                                     {item.rawText.trim()}

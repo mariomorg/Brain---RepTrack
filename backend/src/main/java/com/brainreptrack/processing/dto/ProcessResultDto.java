@@ -33,6 +33,12 @@ public class ProcessResultDto {
     /** Generated Markdown document from the content + metadata. */
     private String markdown;
 
+    /**
+     * Extensive AI-generated summary of the topic (may include web-sourced
+     * context).
+     */
+    private String aiSummary;
+
     /** Ordered list of smart suggestions (most relevant first). */
     private List<SuggestionDto> suggestions;
 }

@@ -213,6 +213,7 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .outputPath(e.getOutputPath())
                 .sourceUrl(e.getSourceUrl())
                 .metadata(e.getMetadata())
+                .aiSummary(e.getAiSummary())
                 .createdAt(e.getCreatedAt())
                 .processedAt(e.getProcessedAt())
                 .build();

@@ -4,6 +4,7 @@ import com.brainreptrack.inbox.client.TranscriptionClient;
 import com.brainreptrack.inbox.dto.CaptureRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
+import com.brainreptrack.inbox.service.FileTextExtractor;
 import com.brainreptrack.inbox.service.InboxItemService;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
@@ -26,6 +27,8 @@ public class InboxItemController {
     private final InboxItemService service;
 
     private final TranscriptionClient transcriptionClient;
+
+    private final FileTextExtractor fileTextExtractor;
 
     // =====================================================================
     // UNIFIED CAPTURE — single entry point for any content type
@@ -70,6 +73,43 @@ public class InboxItemController {
         CaptureRequestDto captureDto = CaptureRequestDto.builder()
                 .content(transcript)
                 .contentType("VOICE_NOTE")
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.capture(captureDto)));
+    }
+
+    /**
+     * File capture — uploads a file (PDF, TXT, etc.), extracts its text content,
+     * and feeds it into the unified capture pipeline as a FILE item.
+     * An optional 'text' parameter can provide additional context from the user.
+     */
+    @PostMapping(value = "/capture/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> captureFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "text", required = false) String additionalText) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("El archivo está vacío"));
+        }
+
+        // Extract text content from the file
+        String extractedText = fileTextExtractor.extractText(file);
+
+        // Combine: user text + extracted content
+        String content;
+        if (additionalText != null && !additionalText.isBlank()) {
+            content = additionalText.trim() + "\n\n--- Contenido del archivo: "
+                    + file.getOriginalFilename() + " ---\n\n" + extractedText;
+        } else {
+            content = extractedText;
+        }
+
+        CaptureRequestDto captureDto = CaptureRequestDto.builder()
+                .content(content)
+                .contentType("FILE")
+                .title(file.getOriginalFilename())
                 .build();
 
         return ResponseEntity.status(HttpStatus.CREATED)

@@ -15,6 +15,9 @@ export interface Note {
     inboxItemId: string | null;
     confidenceScore: number | null;
     tags: NoteTag[];
+    originalContent: string | null;
+    aiSummary: string | null;
+    detectedType: string | null;
 }
 
 export interface CreateNoteRequest {

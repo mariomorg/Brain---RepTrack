@@ -50,6 +50,10 @@ public class InboxItem {
     @Column(name = "metadata", columnDefinition = "TEXT")
     private String metadata;
 
+    /** Extensive AI-generated summary of the topic. */
+    @Column(name = "ai_summary", columnDefinition = "TEXT")
+    private String aiSummary;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

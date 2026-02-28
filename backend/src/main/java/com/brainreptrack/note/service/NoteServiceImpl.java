@@ -91,10 +91,14 @@ public class NoteServiceImpl implements NoteService {
     public NoteResponseDto update(UUID id, NoteRequestDto dto) {
         Note note = findOrThrow(id);
 
-        if (dto.getTitle() != null) note.setTitle(dto.getTitle());
-        if (dto.getPath() != null) note.setPath(dto.getPath());
-        if (dto.getType() != null) note.setType(dto.getType());
-        if (dto.getSummary() != null) note.setSummary(dto.getSummary());
+        if (dto.getTitle() != null)
+            note.setTitle(dto.getTitle());
+        if (dto.getPath() != null)
+            note.setPath(dto.getPath());
+        if (dto.getType() != null)
+            note.setType(dto.getType());
+        if (dto.getSummary() != null)
+            note.setSummary(dto.getSummary());
 
         if (dto.getTags() != null) {
             ensureTags(dto.getTags());
@@ -214,8 +218,19 @@ public class NoteServiceImpl implements NoteService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         String originalContent = null;
+        String aiSummary = null;
+        String detectedType = null;
         if (n.getInboxItem() != null) {
-            originalContent = n.getInboxItem().getRawText();
+            detectedType = n.getInboxItem().getDetectedType();
+            aiSummary = n.getInboxItem().getAiSummary();
+            String raw = n.getInboxItem().getRawText();
+            // Para archivos (FILE), mostrar solo la primera línea (título/nombre)
+            if ("FILE".equalsIgnoreCase(detectedType) && raw != null) {
+                int lineEnd = raw.indexOf('\n');
+                originalContent = lineEnd > 0 ? raw.substring(0, lineEnd).trim() : raw.trim();
+            } else {
+                originalContent = raw;
+            }
         }
 
         return NoteResponseDto.builder()
@@ -229,6 +244,8 @@ public class NoteServiceImpl implements NoteService {
                 .confidenceScore(n.getConfidenceScore())
                 .tags(tagDtos)
                 .originalContent(originalContent)
+                .aiSummary(aiSummary)
+                .detectedType(detectedType)
                 .build();
     }
 }

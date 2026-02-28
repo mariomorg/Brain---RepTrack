@@ -66,6 +66,22 @@ export function useInbox() {
         }
     }, [loadPending]);
 
+    /**
+     * File capture — uploads a file (PDF, TXT, etc.) and extracts text on the backend.
+     */
+    const captureFile = useCallback(async (file: File, additionalText?: string) => {
+        try {
+            setSubmitting(true);
+            await inboxService.captureFile(file, additionalText);
+            await loadPending();
+        } catch (e) {
+            setError('Error al subir el archivo');
+            throw e;
+        } finally {
+            setSubmitting(false);
+        }
+    }, [loadPending]);
+
     const dismiss = useCallback(async (id: string) => {
         try {
             await inboxService.markProcessed(id);
@@ -120,6 +136,7 @@ export function useInbox() {
         submitting,
         error,
         capture,
+        captureFile,
         dismiss,
         remove,
         procesar,
