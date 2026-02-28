@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './shared/components/Layout';
 import InboxPage from './features/inbox/components/InboxPage';
 import CerebroPage from './features/cerebro/components/CerebroPage';
+import ResourceDetailPage from './pages/ResourceDetailPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
           <Route path="/cerebro" element={<CerebroPage />} />
           <Route path="/configuracion" element={<ComingSoon title="Configuración" />} />
           <Route path="/perfil" element={<ComingSoon title="Perfil" />} />
+          <Route path="/recurso/:id" element={<ResourceDetailPage />} />
           <Route path="*" element={<Navigate to="/inbox" replace />} />
         </Routes>
       </Layout>
