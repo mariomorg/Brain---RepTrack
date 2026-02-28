@@ -100,7 +100,7 @@ const MapPage: React.FC = () => {
     setSelectedIdea(idea);
   };
   const handleNavigateToNote = (idea: Idea) => {
-    navigate(`/cerebro?search=${encodeURIComponent(idea.title)}`);
+    navigate(`/recurso/${idea.id}`);
   };
   const handleFocusTag = (tag: TagNode) => {
     setFocusTagPath(tag.path);
