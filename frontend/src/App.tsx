@@ -7,6 +7,11 @@ import { useInbox } from './features/inbox/hooks/useInbox';
 
 import CerebroPage from './features/cerebro/components/CerebroPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
+import ConfiguracionPage from './pages/ConfiguracionPage';
+import PerfilPage from './pages/PerfilPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import { AuthProvider, useAuth } from './features/auth/AuthContext';
 
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
@@ -326,33 +331,44 @@ function HomeRedesigned() {
   );
 }
 
-function ComingSoon({ title }: { title: string }) {
+/** Wrapper that redirects to /login when not authenticated */
+function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+  return <>{children}</>;
+}
+
+function AppRoutes() {
+  const { user } = useAuth();
+
   return (
-    <div style={{ padding: '48px 32px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-      <div style={{ fontSize: 40, marginBottom: 16 }}>🚧</div>
-      <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 8 }}>
-        {title}
-      </h2>
-      <p style={{ fontSize: 14 }}>Esta sección estará disponible próximamente.</p>
-    </div>
+    <Routes>
+      {/* Public routes */}
+      <Route path="/login" element={user ? <Navigate to="/inbox" replace /> : <LoginPage />} />
+      <Route path="/register" element={user ? <Navigate to="/inbox" replace /> : <RegisterPage />} />
+
+      {/* Protected routes — wrapped in Layout */}
+      <Route path="/" element={<ProtectedRoute><Layout><HomeRedesigned /></Layout></ProtectedRoute>} />
+      <Route path="/inbox" element={<ProtectedRoute><Layout><InboxPage /></Layout></ProtectedRoute>} />
+      <Route path="/cerebro" element={<ProtectedRoute><Layout><CerebroPage /></Layout></ProtectedRoute>} />
+      <Route path="/mapa" element={<ProtectedRoute><Layout><MapPage /></Layout></ProtectedRoute>} />
+      <Route path="/configuracion" element={<ProtectedRoute><Layout><ConfiguracionPage /></Layout></ProtectedRoute>} />
+      <Route path="/perfil" element={<ProtectedRoute><Layout><PerfilPage /></Layout></ProtectedRoute>} />
+      <Route path="/recurso/:id" element={<ProtectedRoute><Layout><ResourceDetailPage /></Layout></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to={user ? "/inbox" : "/login"} replace />} />
+    </Routes>
   );
 }
 
 function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<HomeRedesigned />} />
-          <Route path="/inbox" element={<InboxPage />} />
-          <Route path="/cerebro" element={<CerebroPage />} />
-          <Route path="/mapa" element={<MapPage />} />
-          <Route path="/configuracion" element={<ComingSoon title="Configuración" />} />
-          <Route path="/perfil" element={<ComingSoon title="Perfil" />} />
-          <Route path="/recurso/:id" element={<ResourceDetailPage />} />
-          <Route path="*" element={<Navigate to="/inbox" replace />} />
-        </Routes>
-      </Layout>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </BrowserRouter>
   );
 }
