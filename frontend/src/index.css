@@ -914,7 +914,7 @@ body {
 }
 
 .inbox-sidebar {
-    width: 300px;
+    width: 30%;
     min-width: 280px;
     height: 100vh;
     border-left: 1px solid var(--color-border);
@@ -1077,6 +1077,24 @@ body {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+.ai-proposal-box{
+    display: flex;
+    flex-direction: row !important;
+}
+.ai-proposal-box__header{
+    display: flex;
+    flex-direction: column !important;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.ai-proposal-box__header2{
+    display: flex;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
 }
 
 .inbox-item-card {
@@ -1435,4 +1453,102 @@ body {
         width: 100%;
         position: static;
     }
+}
+/* =====================================================
+   PendingApprovalCard — cleanup
+   ===================================================== */
+
+/* La card de aprobación más suave */
+.inbox-item-card--approval {
+  border-color: rgba(124, 58, 237, 0.25);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
+}
+
+/* Texto principal: no partir palabras a lo loco */
+.inbox-item__text {
+  word-break: break-word;       /* en vez de break-all */
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+/* Botón procesar: más “premium” y consistente */
+.ai-action-btn--procesar {
+  height: 34px;
+  border-radius: 10px;
+  padding: 7px 12px;
+  box-shadow: 0 6px 14px rgba(124, 58, 237, 0.18);
+}
+
+.ai-action-btn--procesar:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.ai-action-btn--procesar:active {
+  transform: translateY(0);
+}
+
+/* Caja “Propuesta de la IA”: volver a columna, compacta y alineada */
+.inbox-item-card--approval .ai-proposal-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Header: label a la izquierda, confianza a la derecha */
+.inbox-item-card--approval .ai-proposal-box__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary);
+}
+
+/* “72% conf.” como pill */
+.inbox-item-card--approval .ai-proposal-box__conf {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* Chips (TagChip) con wrap cómodo */
+.inbox-item-card--approval .ai-proposal-box__path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 7px;
+}
+
+/* Motivo: más legible y menos “cursi” */
+.inbox-item-card--approval .ai-proposal-box__motivo {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-style: normal;
+  line-height: 1.5;
+  padding-top: 2px;
+}
+
+/* Icono de eliminar: mismo tamaño que el botón procesar */
+.inbox-item-card--approval .capture-toolbar-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.inbox-item-card--approval .capture-toolbar-btn:hover {
+  background: rgba(239, 68, 68, 0.08);
 }
