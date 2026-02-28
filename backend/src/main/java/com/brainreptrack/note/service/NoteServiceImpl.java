@@ -4,11 +4,13 @@ import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.note.domain.Note;
 import com.brainreptrack.note.domain.NoteTag;
+import com.brainreptrack.note.dto.FolderSummaryRequestDto;
 import com.brainreptrack.note.dto.NoteRequestDto;
 import com.brainreptrack.note.dto.NoteResponseDto;
 import com.brainreptrack.note.dto.NoteTagDto;
 import com.brainreptrack.note.repository.NoteRepository;
 import com.brainreptrack.note.repository.TagRepository;
+import com.brainreptrack.processing.service.OllamaClient;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class NoteServiceImpl implements NoteService {
     private final NoteRepository noteRepository;
     private final InboxItemRepository inboxItemRepository;
     private final TagRepository tagRepository;
+    private final OllamaClient ollamaClient;
 
     @Override
     public NoteResponseDto create(NoteRequestDto dto) {
@@ -179,6 +182,58 @@ public class NoteServiceImpl implements NoteService {
                 .limit(5)
                 .map(ns -> toDto(ns.note))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String generateFolderSummary(FolderSummaryRequestDto request) {
+        if (request.getNoteIds() == null || request.getNoteIds().isEmpty()) {
+            return "No hay notas en esta carpeta para resumir.";
+        }
+
+        // Build context: title + summary for each note
+        StringBuilder context = new StringBuilder();
+        for (UUID noteId : request.getNoteIds()) {
+            noteRepository.findById(noteId).ifPresent(note -> {
+                context.append("- **").append(note.getTitle()).append("**");
+                if (note.getSummary() != null && !note.getSummary().isBlank()) {
+                    context.append(": ").append(note.getSummary().strip());
+                }
+                // Include AI summary if available
+                if (note.getInboxItem() != null && note.getInboxItem().getAiSummary() != null
+                        && !note.getInboxItem().getAiSummary().isBlank()) {
+                    String aiS = note.getInboxItem().getAiSummary().strip();
+                    // Truncate to avoid huge prompts (max 400 chars per note)
+                    if (aiS.length() > 400) aiS = aiS.substring(0, 400) + "…";
+                    context.append(" | Detalle: ").append(aiS);
+                }
+                context.append("\n");
+            });
+        }
+
+        String folderLabel = request.getFolderPath() != null && !request.getFolderPath().isBlank()
+                ? request.getFolderPath()
+                : request.getFolderName() != null ? request.getFolderName() : "esta carpeta";
+
+        String systemPrompt = """
+                Eres un asistente de base de conocimiento personal. \
+                Recibirás una lista de notas de una carpeta y debes generar un resumen cohesionado, \
+                en español, que explique de forma clara qué tipo de conocimiento hay en esa carpeta, \
+                cuáles son los temas principales y qué patrones o relaciones observas entre las notas. \
+                El resumen debe tener entre 3 y 6 oraciones y ser útil para que el usuario recuerde \
+                rápidamente el contenido de la carpeta. No uses listas, escribe en prosa fluida.""";
+
+        String userPrompt = String.format(
+                "Carpeta: \"%s\"\n\nNotas (%d):\n%s\n\nEscribe el resumen de la carpeta:",
+                folderLabel, request.getNoteIds().size(), context);
+
+        try {
+            var response = ollamaClient.generateText(systemPrompt, userPrompt);
+            String result = response.getResponse();
+            return (result != null && !result.isBlank()) ? result.strip() : "No se pudo generar el resumen.";
+        } catch (Exception e) {
+            return "Error al generar el resumen: " + e.getMessage();
+        }
     }
 
     private static class NoteScore {

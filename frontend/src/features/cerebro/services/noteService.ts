@@ -56,6 +56,15 @@ export const noteService = {
     return res.data.data;
   },
 
+  /** Generates an AI summary for all notes in a leaf folder. */
+  folderSummary: async (folderName: string, folderPath: string, noteIds: string[]): Promise<string> => {
+    const res = await apiClient.post<ApiResponse<string>>(
+      `${BASE}/folder-summary`,
+      { folderName, folderPath, noteIds }
+    );
+    return res.data.data;
+  },
+
   update: async (id: string, data: UpdateNoteRequest): Promise<Note> => {
     const res = await apiClient.put<ApiResponse<Note>>(
       `${BASE}/${id}`,

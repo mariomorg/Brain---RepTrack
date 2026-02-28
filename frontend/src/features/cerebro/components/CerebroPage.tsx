@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useCerebro } from '../hooks/useCerebro';
 import { NoteCard } from './NoteCard';
 import { TagFilter } from './TagFilter';
+import { FolderView } from './FolderView';
 
 const SearchIcon = () => (
   <svg
@@ -24,6 +25,7 @@ export default function CerebroPage() {
   const [searchParams] = useSearchParams();
   const {
     filteredNotes,
+    allFilteredNotes,
     loading,
     error,
     searchQuery,
@@ -43,6 +45,7 @@ export default function CerebroPage() {
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [tagQuery, setTagQuery] = useState('');
   const [inputValue, setInputValue] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'folders'>('grid');
 
   const navigate = useNavigate();
 
@@ -56,11 +59,23 @@ export default function CerebroPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Aplanar tags jerárquicas en segmentos individuales para el autocompletado
+  const flatTagSegments = useMemo(() => {
+    const seen = new Set<string>();
+    for (const tag of tags) {
+      const raw = tag.startsWith('#') ? tag.slice(1) : tag;
+      for (const seg of raw.split('/').filter(Boolean)) {
+        seen.add(seg);
+      }
+    }
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [tags]);
+
   // Filtrar tags para autocompletado
-  const filteredTagSuggestions = tags.filter(
-    (tag) =>
-      tag.toLowerCase().includes(tagQuery.toLowerCase()) &&
-      !activeTags.includes(tag)
+  const filteredTagSuggestions = flatTagSegments.filter(
+    (seg) =>
+      seg.toLowerCase().includes(tagQuery.toLowerCase()) &&
+      !activeTags.includes(seg)
   );
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,7 +115,6 @@ export default function CerebroPage() {
         </p>
       </div>
 
-      {/* Search and Sort Bar */}
       <div className="cerebro-search-container">
         <div className="search-bar-wrapper">
           <div className="search-bar">
@@ -175,6 +189,31 @@ export default function CerebroPage() {
           >
             {sortBy === 'alphabetical-reverse' ? 'Z↓A' : 'A↑Z'}
           </button>
+
+          {/* View mode toggle */}
+          <div className="view-mode-toggle">
+            <button
+              className={`view-mode-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Vista en cuadrícula"
+              type="button"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
+              </svg>
+            </button>
+            <button
+              className={`view-mode-btn ${viewMode === 'folders' ? 'active' : ''}`}
+              onClick={() => setViewMode('folders')}
+              title="Vista por carpetas"
+              type="button"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -198,7 +237,7 @@ export default function CerebroPage() {
         </div>
       )}
 
-      {!loading && !error && filteredNotes.length === 0 && (
+      {!loading && !error && allFilteredNotes.length === 0 && (
         <div className="empty-state">
           <div className="empty-state__icon">🧠</div>
           <p className="empty-state__text">
@@ -209,54 +248,64 @@ export default function CerebroPage() {
         </div>
       )}
 
-      {!loading && !error && filteredNotes.length > 0 && (
+      {!loading && !error && allFilteredNotes.length > 0 && (
         <>
-          <div className="notes-grid">
-            {filteredNotes.map((note) => (
-              <div
-                key={note.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate(`/recurso/${note.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ')
-                    navigate(`/recurso/${note.id}`);
-                }}
-                style={{ cursor: 'pointer' }}
-                aria-label={`Ver detalles de ${note.title}`}
-              >
-                <NoteCard note={note} />
-              </div>
-            ))}
-          </div>
+          {/* ── Folder view ──────────────────────────────── */}
+          {viewMode === 'folders' && (
+            <FolderView notes={allFilteredNotes} />
+          )}
 
-          {/* Paginación */}
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button
-                className="pagination-btn"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                type="button"
-              >
-                ← Anterior
-              </button>
-
-              <div className="pagination-info">
-                Página {currentPage} de {totalPages} ({totalItems} notas)
+          {/* ── Grid view ────────────────────────────────── */}
+          {viewMode === 'grid' && (
+            <>
+              <div className="notes-grid">
+                {filteredNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/recurso/${note.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ')
+                        navigate(`/recurso/${note.id}`);
+                    }}
+                    style={{ cursor: 'pointer' }}
+                    aria-label={`Ver detalles de ${note.title}`}
+                  >
+                    <NoteCard note={note} />
+                  </div>
+                ))}
               </div>
 
-              <button
-                className="pagination-btn"
-                onClick={() =>
-                  setCurrentPage(Math.min(totalPages, currentPage + 1))
-                }
-                disabled={currentPage === totalPages}
-                type="button"
-              >
-                Siguiente →
-              </button>
-            </div>
+              {/* Paginación */}
+              {totalPages > 1 && (
+                <div className="pagination">
+                  <button
+                    className="pagination-btn"
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    type="button"
+                  >
+                    ← Anterior
+                  </button>
+
+                  <div className="pagination-info">
+                    Página {currentPage} de {totalPages} ({totalItems} notas)
+                  </div>
+
+                  <button
+                    className="pagination-btn"
+                    onClick={() =>
+                      setCurrentPage(Math.min(totalPages, currentPage + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    type="button"
+                  >
+                    Siguiente →
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
