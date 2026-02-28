@@ -456,12 +456,14 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             return;
         String[] parts = path.split("/");
         String parent = null;
-        for (String part : parts) {
-            String name = part.trim();
-            if (name.isEmpty())
+        for (int i = 0; i < parts.length; i++) {
+            String segment = parts[i].trim();
+            if (segment.isEmpty())
                 continue;
-            tagRepository.upsert(name, parent);
-            parent = name;
+            // Build the full accumulated path for this level (e.g. "ia", "ia/ml", "ia/ml/tensorflow")
+            String accumulatedName = String.join("/", Arrays.copyOfRange(parts, 0, i + 1));
+            tagRepository.upsert(accumulatedName, parent);
+            parent = accumulatedName;
         }
     }
 
