@@ -55,12 +55,18 @@ public class InboxItemServiceImpl implements InboxItemService {
     @Override
     public InboxItemResponseDto update(UUID id, InboxItemRequestDto dto) {
         InboxItem entity = findOrThrow(id);
-        if (dto.getRawText() != null)       entity.setRawText(dto.getRawText());
-        if (dto.getDetectedType() != null)  entity.setDetectedType(dto.getDetectedType());
-        if (dto.getStatus() != null)        entity.setStatus(dto.getStatus());
-        if (dto.getProposalsJson() != null) entity.setProposalsJson(dto.getProposalsJson());
-        if (dto.getFinalJson() != null)     entity.setFinalJson(dto.getFinalJson());
-        if (dto.getOutputPath() != null)    entity.setOutputPath(dto.getOutputPath());
+        if (dto.getRawText() != null)
+            entity.setRawText(dto.getRawText());
+        if (dto.getDetectedType() != null)
+            entity.setDetectedType(dto.getDetectedType());
+        if (dto.getStatus() != null)
+            entity.setStatus(dto.getStatus());
+        if (dto.getProposalsJson() != null)
+            entity.setProposalsJson(dto.getProposalsJson());
+        if (dto.getFinalJson() != null)
+            entity.setFinalJson(dto.getFinalJson());
+        if (dto.getOutputPath() != null)
+            entity.setOutputPath(dto.getOutputPath());
         // mark as processed when status changes away from PENDING
         if (dto.getStatus() != null && !"PENDING".equals(dto.getStatus()) && entity.getProcessedAt() == null) {
             entity.setProcessedAt(LocalDateTime.now());
@@ -72,6 +78,12 @@ public class InboxItemServiceImpl implements InboxItemService {
     public void delete(UUID id) {
         findOrThrow(id);
         repository.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countPending() {
+        return repository.countByStatus("PENDING");
     }
 
     // -------------------------------------------------------

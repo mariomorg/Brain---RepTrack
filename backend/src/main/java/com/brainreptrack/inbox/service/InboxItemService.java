@@ -19,4 +19,6 @@ public interface InboxItemService {
     InboxItemResponseDto update(UUID id, InboxItemRequestDto dto);
 
     void delete(UUID id);
+
+    long countPending();
 }

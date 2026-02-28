@@ -55,4 +55,9 @@ public class InboxItemController {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
+
+    @GetMapping("/count/pending")
+    public ResponseEntity<ApiResponse<Long>> countPending() {
+        return ResponseEntity.ok(ApiResponse.ok(service.countPending()));
+    }
 }

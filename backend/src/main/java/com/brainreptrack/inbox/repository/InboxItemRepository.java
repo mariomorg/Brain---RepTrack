@@ -13,4 +13,6 @@ public interface InboxItemRepository extends JpaRepository<InboxItem, UUID> {
     List<InboxItem> findByStatus(String status);
 
     List<InboxItem> findByDetectedType(String detectedType);
+
+    long countByStatus(String status);
 }
