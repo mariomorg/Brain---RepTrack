@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useCerebro } from '../hooks/useCerebro';
 import { NoteCard } from './NoteCard';
 import { TagFilter } from './TagFilter';
@@ -9,25 +10,61 @@ const SearchIcon = () => (
     </svg>
 );
 
-const FilterIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-    </svg>
-);
-
 export default function CerebroPage() {
     const {
         filteredNotes,
-        notes,
         tags,
         loading,
         error,
         searchQuery,
         setSearchQuery,
-        activeTag,
-        selectTag,
+        activeTags,
+        toggleTag,
+        clearTags,
+        sortBy,
+        setSortBy,
+        currentPage,
+        setCurrentPage,
+        totalPages,
+        totalItems,
     } = useCerebro();
+
+    const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+    const [tagQuery, setTagQuery] = useState('');
+    const [inputValue, setInputValue] = useState('');
+    
+    // Filtrar tags para autocompletado
+    const filteredTagSuggestions = tags.filter(tag => 
+        tag.toLowerCase().includes(tagQuery.toLowerCase()) && 
+        !activeTags.includes(tag)
+    );
+
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setInputValue(value);
+        
+        // Detectar si está escribiendo un tag (empieza con #)
+        const tagMatch = value.match(/#(\w*)$/);
+        if (tagMatch) {
+            // Guardar solo el texto antes del #
+            const textBeforeTag = value.substring(0, value.lastIndexOf('#')).trim();
+            setSearchQuery(textBeforeTag);
+            setTagQuery(tagMatch[1]);
+            setShowTagSuggestions(true);
+        } else {
+            setSearchQuery(value);
+            setShowTagSuggestions(false);
+            setTagQuery('');
+        }
+    };
+
+    const selectTagFromSearch = (tag: string) => {
+        // Activar el tag y limpiar el input
+        toggleTag(tag);
+        setInputValue(searchQuery); // Volver al texto sin el #
+        setShowTagSuggestions(false);
+        setTagQuery('');
+    };
 
     return (
         <div className="cerebro-page">
@@ -37,30 +74,77 @@ export default function CerebroPage() {
                 <p className="page-header__subtitle">Conocimiento estructurado y listo para usar.</p>
             </div>
 
-            {/* Toolbar */}
-            <div className="cerebro-toolbar">
-                <div className="search-bar">
-                    <span className="search-bar__icon"><SearchIcon /></span>
-                    <input
-                        className="search-bar__input"
-                        type="text"
-                        placeholder="Buscar conocimiento..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+            {/* Search and Sort Bar */}
+            <div className="cerebro-search-container">
+                <div className="search-bar-wrapper">
+                    <div className="search-bar">
+                        <span className="search-bar__icon"><SearchIcon /></span>
+                        <input
+                            className="search-bar__input"
+                            type="text"
+                            placeholder="Buscar conocimiento... (usa # para tags)"
+                            value={inputValue}
+                            onChange={handleSearchChange}
+                        />
+                    </div>
+                    
+                    {/* Autocompletado de tags */}
+                    {showTagSuggestions && filteredTagSuggestions.length > 0 && (
+                        <div className="tag-autocomplete">
+                            {filteredTagSuggestions.slice(0, 8).map(tag => (
+                                <button
+                                    key={tag}
+                                    className="tag-autocomplete-item"
+                                    onClick={() => selectTagFromSearch(tag)}
+                                >
+                                    #{tag}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
-                <button className="icon-btn" title="Filtrar">
-                    <FilterIcon />
-                </button>
+                
+                <div className="sort-options">
+                    <button
+                        className={`sort-option ${sortBy === 'newest' || sortBy === 'oldest' ? 'active' : ''}`}
+                        onClick={() => {
+                            if (sortBy === 'newest') {
+                                setSortBy('oldest');
+                            } else if (sortBy === 'oldest') {
+                                setSortBy('none');
+                            } else {
+                                setSortBy('newest');
+                            }
+                        }}
+                        title={sortBy === 'oldest' ? 'Más antiguos primero' : 'Más recientes primero'}
+                    >
+                        {sortBy === 'oldest' ? 'Recientes ↓' : 'Recientes ↑'}
+                    </button>
+                    <button
+                        className={`sort-option ${sortBy === 'alphabetical' || sortBy === 'alphabetical-reverse' ? 'active' : ''}`}
+                        onClick={() => {
+                            if (sortBy === 'alphabetical') {
+                                setSortBy('alphabetical-reverse');
+                            } else if (sortBy === 'alphabetical-reverse') {
+                                setSortBy('none');
+                            } else {
+                                setSortBy('alphabetical');
+                            }
+                        }}
+                        title={sortBy === 'alphabetical-reverse' ? 'Z → A' : 'A → Z'}
+                    >
+                        {sortBy === 'alphabetical-reverse' ? 'Z↓A' : 'A↑Z'}
+                    </button>
+                </div>
             </div>
 
             {/* Tag filter */}
             {tags.length > 0 && (
                 <TagFilter
                     tags={tags}
-                    activeTag={activeTag}
-                    totalCount={notes.length}
-                    onSelect={selectTag}
+                    activeTags={activeTags}
+                    onToggle={toggleTag}
+                    onClear={clearTags}
                 />
             )}
 
@@ -76,17 +160,44 @@ export default function CerebroPage() {
                 <div className="empty-state">
                     <div className="empty-state__icon">🧠</div>
                     <p className="empty-state__text">
-                        {searchQuery || activeTag
+                        {searchQuery || activeTags.length > 0
                             ? 'No se encontraron notas con ese filtro.'
                             : 'Sin notas todavía. ¡Empieza capturando ideas desde el Inbox!'}
                     </p>
                 </div>
             ) : (
-                <div className="notes-grid">
-                    {filteredNotes.map((note) => (
-                        <NoteCard key={note.id} note={note} />
-                    ))}
-                </div>
+                <>
+                    <div className="notes-grid">
+                        {filteredNotes.map((note) => (
+                            <NoteCard key={note.id} note={note} />
+                        ))}
+                    </div>
+                    
+                    {/* Paginación */}
+                    {totalPages > 1 && (
+                        <div className="pagination">
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                disabled={currentPage === 1}
+                            >
+                                ← Anterior
+                            </button>
+                            
+                            <div className="pagination-info">
+                                Página {currentPage} de {totalPages} ({totalItems} notas)
+                            </div>
+                            
+                            <button
+                                className="pagination-btn"
+                                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                                disabled={currentPage === totalPages}
+                            >
+                                Siguiente →
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );
