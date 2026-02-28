@@ -9,7 +9,8 @@ import ResourceDetailPage from './pages/ResourceDetailPage';
 // Nuevo: MapPage
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
-import { TagNode, Idea } from './mockData';
+import { IdeaPopup } from './components/IdeaPopup';
+import { TagNode, Idea, ROOT_COLORS } from './mockData';
 import { fetchMapData } from './features/map/services/mapService';
 
 /** Zoom inicial: ajusta para que todos los nodos quepan cómodamente */
@@ -40,9 +41,11 @@ const MapPage: React.FC = () => {
 
   const [camera, setCamera]         = React.useState({ x: 0, y: 0, zoom: 0.08 });
   const initialZoom                 = React.useRef(0.08);
+  const [resetViewSignal, setResetViewSignal] = React.useState(0);
   const [focusTagPath, setFocusTagPath] = React.useState<string | null>(null);
   const [selectedTag, setSelectedTag]   = React.useState<TagNode | null>(null);
   const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
+  const [popupIdea, setPopupIdea]       = React.useState<Idea | null>(null);
   const [visibleTags, setVisibleTags]   = React.useState<TagNode[]>([]);
   const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
   // Si hay ideaId en la query, centrar y seleccionar esa idea
@@ -98,6 +101,7 @@ const MapPage: React.FC = () => {
   };
   const handleSelectIdea = (idea: Idea) => {
     setSelectedIdea(idea);
+    setPopupIdea(idea);
   };
   const handleNavigateToNote = (idea: Idea) => {
     navigate(`/recurso/${idea.id}`);
@@ -108,7 +112,7 @@ const MapPage: React.FC = () => {
     setSelectedIdea(null);
   };
   const handleResetView = () => {
-    setCamera({ x: 0, y: 0, zoom: initialZoom.current });
+    setResetViewSignal(s => s + 1);
     setFocusTagPath(null);
     setSelectedTag(null);
     setSelectedIdea(null);
@@ -132,6 +136,8 @@ const MapPage: React.FC = () => {
             onNavigateToNote={handleNavigateToNote}
             width={canvasWidth}
             height={canvasHeight}
+            resetViewSignal={resetViewSignal}
+            initialZoom={initialZoom.current}
           />
 
           {/* Botón "Vista general" — overlay esquina superior izquierda */}
@@ -184,7 +190,19 @@ const MapPage: React.FC = () => {
             selectedTag={selectedTag}
             selectedIdea={selectedIdea}
             onSelectIdea={handleSelectIdea}
+            allTags={visibleTags}
+            onSelectTag={handleSelectTag}
           />
+
+          {/* Popup de idea — aparece al hacer click en un pin */}
+          {popupIdea && (
+            <IdeaPopup
+              idea={popupIdea}
+              accentColor={ROOT_COLORS[popupIdea.tagPaths[0]?.split('/')[0] ?? ''] ?? '#43BCCD'}
+              onClose={() => { setPopupIdea(null); setSelectedIdea(null); }}
+              onNavigate={(idea) => { setPopupIdea(null); navigate(`/recurso/${idea.id}`); }}
+            />
+          )}
         </div>
       </div>
     </div>

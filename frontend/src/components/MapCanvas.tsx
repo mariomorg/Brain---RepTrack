@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { TagNode, Idea, ROOT_COLORS } from '../mockData';
 import { Camera, worldToScreen } from '../lib/camera';
 import { shouldDrawNode } from '../lib/lod';
-import { hitTestIdea } from '../lib/hittest';
+import { hitTestIdea, hitTestTagScreen } from '../lib/hittest';
 
 /** HSL -> HEX (#RRGGBB) */
 function hslToHex(h: number, s: number, l: number): string {
@@ -54,6 +54,10 @@ interface MapCanvasProps {
   onNavigateToNote: (idea: Idea) => void;
   width: number;
   height: number;
+  /** Incrementar para disparar animación de "Vista general" */
+  resetViewSignal?: number;
+  /** Zoom inicial al que vuelve "Vista general" */
+  initialZoom?: number;
 }
 
 /** Returns the world-space radius of a tag node. Always uses the precomputed radius. */
@@ -71,10 +75,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   selectedIdea,
   onSelectTag: _onSelectTag,
   onSelectIdea,
-  onFocusTag: _onFocusTag,
+  onFocusTag,
   onNavigateToNote,
   width,
   height,
+  resetViewSignal = 0,
+  initialZoom = 0.08,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number | null>(null);
@@ -89,11 +95,34 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
   // Zoom con inercia (lerp hacia targetZoom)
   const targetZoom = useRef(camera.zoom);
+  const targetX = useRef(camera.x);
+  const targetY = useRef(camera.y);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
 
+  // Animación basada en tiempo (ease-out) para clicks en tag
+  const anim = useRef<{
+    startZoom: number; endZoom: number;
+    startX: number;   endX: number;
+    startY: number;   endY: number;
+    startTime: number; duration: number;
+    active: boolean;
+  }>({
+    startZoom: camera.zoom, endZoom: camera.zoom,
+    startX: camera.x,       endX: camera.x,
+    startY: camera.y,       endY: camera.y,
+    startTime: 0, duration: 0, active: false,
+  });
+
+  // Para detectar resets externos del padre (botón "Vista general", etc.)
+  const lastSetZoom = useRef(camera.zoom);
+  const lastSetX    = useRef(camera.x);
+  const lastSetY    = useRef(camera.y);
+
   // Pin hover
   const hoveredIdea = useRef<string | null>(null);
+  // Modo animación rápida legacy (scroll)
+  const fastAnim = useRef(false);
 
   // Dibuja el canvas
   const draw = useCallback(() => {
@@ -161,7 +190,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
       const sc = worldToScreen(camera, tag.x, tag.y, width, height);
       const rootKey = tag.path.split('/')[0];
-      const color = colorForKey(rootKey); // ✅ ahora es #RRGGBB siempre
+      const color = colorForKey(rootKey);
       const alpha = fadeIn(screenR);
 
       ctx.save();
@@ -170,46 +199,43 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       ctx.arc(sc.x, sc.y, screenR, 0, 2 * Math.PI);
 
       if (level === 0) {
-        // Gradiente radial tipo planeta — relleno sólido con highlight
+        // Gradiente radial tipo planeta
         const grad = ctx.createRadialGradient(
           sc.x - screenR * 0.35, sc.y - screenR * 0.35, screenR * 0.05,
           sc.x, sc.y, screenR
         );
-        grad.addColorStop(0, color + 'cc');   // highlight claro
-        grad.addColorStop(0.5, color + '99');
-        grad.addColorStop(1, color + 'dd');   // borde más saturado
+        grad.addColorStop(0, color + 'bb');
+        grad.addColorStop(0.5, color + '88');
+        grad.addColorStop(1, color + 'cc');
         ctx.fillStyle = grad;
         ctx.fill();
-
-        // Borde luminoso fuerte
         ctx.shadowColor = color;
-        ctx.shadowBlur = Math.max(24, screenR * 0.12);
-        ctx.lineWidth = Math.max(2, screenR * 0.008);
+        ctx.shadowBlur = Math.max(20, screenR * 0.10);
+        ctx.lineWidth = Math.max(2, screenR * 0.007);
         ctx.strokeStyle = color + 'ff';
         ctx.stroke();
         ctx.shadowBlur = 0;
-
         // Halo exterior tenue
         ctx.beginPath();
-        ctx.arc(sc.x, sc.y, screenR * 1.05, 0, 2 * Math.PI);
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = color + '44';
+        ctx.arc(sc.x, sc.y, screenR * 1.04, 0, 2 * Math.PI);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = color + '33';
         ctx.stroke();
       } else if (level === 1) {
-        ctx.fillStyle = color + '40';
+        // Casi transparente — sólo se ve el borde, el interior queda limpio
+        ctx.fillStyle = color + '18';
         ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = color + 'dd';
-        ctx.shadowColor = color + '88';
-        ctx.shadowBlur = 10;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = color + 'cc';
+        ctx.shadowColor = color + '55';
+        ctx.shadowBlur = 8;
         ctx.stroke();
         ctx.shadowBlur = 0;
       } else {
-        // L2
-        ctx.fillStyle = color + '30';
+        ctx.fillStyle = color + '12';
         ctx.fill();
         ctx.lineWidth = 1;
-        ctx.strokeStyle = color + 'bb';
+        ctx.strokeStyle = color + '99';
         ctx.stroke();
       }
 
@@ -233,33 +259,33 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const sc = worldToScreen(camera, tag.x, tag.y, width, height);
       const children = childrenMap.get(tag.path) ?? [];
 
-      // Fade-out del label cuando los hijos empiezan a aparecer
+      // El label del padre desaparece rápido cuando los hijos son visibles
       let labelAlpha = fadeIn(screenR);
       if (children.length > 0) {
         const firstChildR = tagRadius(children[0]) * camera.zoom;
-        labelAlpha *= fadeOut(firstChildR, 28, 72);
+        // Empieza a desvanecerse antes (desde 20px) y termina antes (en 50px)
+        labelAlpha *= fadeOut(firstChildR, 20, 55);
       }
 
       if (labelAlpha > 0.02 && screenR >= 16) {
-        const fontSize = Math.max(11, Math.min(screenR * 0.35, 52));
+        const fontSize = Math.max(11, Math.min(screenR * 0.32, 48));
         ctx.save();
-        ctx.font = `700 ${fontSize}px system-ui, sans-serif`;
         ctx.globalAlpha = labelAlpha;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        const label = fitText(tag.name, screenR * 1.65);
+        const label = fitText(tag.name, screenR * 1.6);
 
         if (level === 0) {
           ctx.font = `800 ${fontSize}px system-ui, sans-serif`;
-          ctx.shadowColor = 'rgba(0,0,0,0.85)';
-          ctx.shadowBlur = fontSize * 0.8;
+          ctx.shadowColor = 'rgba(0,0,0,0.9)';
+          ctx.shadowBlur = fontSize * 0.9;
           ctx.fillStyle = '#ffffff';
           ctx.fillText(label, sc.x, sc.y);
-          ctx.shadowBlur = 0;
         } else {
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = fontSize * 0.4;
-          ctx.fillStyle = '#f0f0f0';
+          ctx.font = `700 ${fontSize}px system-ui, sans-serif`;
+          ctx.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx.shadowBlur = fontSize * 0.5;
+          ctx.fillStyle = '#f4f4f4';
           ctx.fillText(label, sc.x, sc.y);
         }
         ctx.restore();
@@ -273,29 +299,47 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     }
 
     // ── PASS 3: Pins flotantes ────────────────────────────────────────────────
-    const PIN_ZOOM_START = 0.35;
-    const PIN_ZOOM_FULL = 0.60;
+    // Los pins sólo aparecen cuando hay suficiente zoom para ver el interior
+    // de un subtag — evita que se mezclen con los círculos de nivel 0/1
+    const PIN_ZOOM_START = 0.70;
+    const PIN_ZOOM_FULL  = 1.00;
     const pinGlobalAlpha = Math.min(
       1,
       Math.max(0, (camera.zoom - PIN_ZOOM_START) / (PIN_ZOOM_FULL - PIN_ZOOM_START))
     );
 
+    // Build a quick path→tag lookup to filter pins by zoom level
+    const tagByPath = new Map<string, typeof tags[0]>();
+    tags.forEach(t => tagByPath.set(t.path, t));
+
     if (pinGlobalAlpha > 0) {
       for (const idea of ideas) {
+        // Find the deepest (most specific) tag this idea belongs to
+        let homePath = idea.tagPaths[0] ?? '';
+        for (const p of idea.tagPaths) {
+          const t = tagByPath.get(p);
+          const h = tagByPath.get(homePath);
+          if (t && h && (t.level ?? 0) > (h.level ?? 0)) homePath = p;
+        }
+        const homeTag = tagByPath.get(homePath);
+        const homeScreenR = homeTag ? (homeTag.radius ?? 300) * camera.zoom : 0;
+        // Solo mostrar si el tag home es visible (screenR > 14px), nunca antes
+        if (homeScreenR < 14) continue;
+
         const { x, y } = worldToScreen(camera, idea.x, idea.y, width, height);
         const rootKey = idea.tagPaths[0]?.split('/')[0] ?? '';
         const baseColor = rootKey ? colorForKey(rootKey) : '#43BCCD';
         const isHovered = hoveredIdea.current === idea.id;
         const pinColor = isHovered ? '#F45B69' : baseColor;
-        const pinR = Math.max(4, 7 * camera.zoom);
+        const pinR = Math.max(3, 5 * camera.zoom);
 
         ctx.save();
         ctx.globalAlpha = pinGlobalAlpha;
 
-        // Halo suave exterior (más grande e intenso en hover)
-        const haloR = isHovered ? pinR * 3.5 : pinR * 2.8;
-        const haloGrad = ctx.createRadialGradient(x, y, pinR * 0.5, x, y, haloR);
-        haloGrad.addColorStop(0, pinColor + (isHovered ? '66' : '44'));
+        // Halo suave
+        const haloR = pinR * (isHovered ? 3.2 : 2.4);
+        const haloGrad = ctx.createRadialGradient(x, y, pinR * 0.4, x, y, haloR);
+        haloGrad.addColorStop(0, pinColor + (isHovered ? '55' : '33'));
         haloGrad.addColorStop(1, pinColor + '00');
         ctx.beginPath();
         ctx.arc(x, y, haloR, 0, 2 * Math.PI);
@@ -307,53 +351,48 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         ctx.arc(x, y, pinR, 0, 2 * Math.PI);
         ctx.fillStyle = isHovered ? '#fff0f1' : '#ffffff';
         ctx.shadowColor = pinColor;
-        ctx.shadowBlur = isHovered ? 18 : 10;
+        ctx.shadowBlur = isHovered ? 16 : 8;
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.strokeStyle = pinColor;
-        ctx.lineWidth = isHovered ? 2.5 : 1.8;
+        ctx.lineWidth = isHovered ? 2 : 1.5;
         ctx.stroke();
 
         // Punto interior
         ctx.beginPath();
-        ctx.arc(x, y, pinR * 0.38, 0, 2 * Math.PI);
+        ctx.arc(x, y, pinR * 0.36, 0, 2 * Math.PI);
         ctx.fillStyle = pinColor;
         ctx.fill();
 
-        // Etiqueta flotante (pill)
-        const labelAlpha = Math.min(1, Math.max(0, (camera.zoom - 0.50) / (0.75 - 0.50)));
-        if (labelAlpha > 0 || isHovered) {
-          const effectiveAlpha = isHovered ? Math.max(labelAlpha, 0.95) : labelAlpha;
-          const fs = Math.max(9, 11 * Math.min(camera.zoom, 1.4));
+        // Pill: en hover siempre; también aparece gradualmente desde zoom 1.4
+        const pillZoomAlpha = Math.min(1, Math.max(0, (camera.zoom - 1.4) / (2.0 - 1.4)));
+        const showPill = isHovered || pillZoomAlpha > 0;
+        if (showPill) {
+          const effectiveAlpha = isHovered ? 0.95 : pillZoomAlpha * 0.85;
+          const fs = Math.max(9, 10 * Math.min(camera.zoom, 1.6));
           ctx.font = `${isHovered ? 600 : 500} ${fs}px system-ui, sans-serif`;
           const tw = ctx.measureText(idea.title).width;
-          const pH = fs + 7;
-          const pW = tw + 14;
-          const lx = x + pinR + 6;
+          const pH = fs + 6;
+          const pW = tw + 12;
+          const lx = x + pinR + 5;
           const ly = y - pH / 2;
 
           ctx.globalAlpha = pinGlobalAlpha * effectiveAlpha;
-
-          // Pill background
-          ctx.fillStyle = isHovered ? 'rgba(244,91,105,0.92)' : 'rgba(10,12,22,0.72)';
-          ctx.strokeStyle = isHovered ? 'rgba(255,100,120,0.6)' : (pinColor + '66');
-          ctx.lineWidth = isHovered ? 0 : 0.9;
-          ctx.shadowColor = isHovered ? 'rgba(244,91,105,0.5)' : 'rgba(0,0,0,0.5)';
-          ctx.shadowBlur = isHovered ? 12 : 8;
+          ctx.fillStyle = isHovered ? 'rgba(244,91,105,0.92)' : 'rgba(8,10,20,0.80)';
+          ctx.strokeStyle = isHovered ? 'transparent' : (pinColor + '55');
+          ctx.lineWidth = 0.8;
+          ctx.shadowColor = 'rgba(0,0,0,0.4)';
+          ctx.shadowBlur = isHovered ? 10 : 6;
           ctx.beginPath();
           ctx.roundRect(lx, ly, pW, pH, pH / 2);
           ctx.fill();
           if (!isHovered) ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Texto
           ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
-          ctx.shadowColor = 'rgba(0,0,0,0.5)';
-          ctx.shadowBlur = isHovered ? 0 : 3;
-          ctx.fillText(idea.title, lx + 7, ly + pH / 2);
-          ctx.shadowBlur = 0;
+          ctx.fillText(idea.title, lx + 6, ly + pH / 2);
         }
 
         // Anillo de selección
@@ -362,7 +401,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           ctx.lineWidth = 2;
           ctx.strokeStyle = '#F45B69';
           ctx.shadowColor = '#F45B69';
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = 10;
           ctx.beginPath();
           ctx.arc(x, y, pinR + 4, 0, 2 * Math.PI);
           ctx.stroke();
@@ -374,25 +413,123 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     }
   }, [camera, tags, ideas, width, height, selectedIdea]);
 
-  // Cuando el padre cambia la cámara externamente (p.ej. botón Vista general),
-  // sincronizamos targetZoom para que el lerp apunte al zoom nuevo
+  // Cuando el padre resetea la cámara externamente (p.ej. botón Vista general),
+  // Cuando el padre resetea la cámara externamente (botón "Vista general", etc.)
+  // lo detectamos comparando con lo que nosotros mismos enviamos al padre la última vez.
+  // Si difiere → es un reset externo, sincronizamos los targets.
+  const externalCameraRef = useRef(camera);
   useEffect(() => {
-    targetZoom.current = camera.zoom;
-  }, [camera.zoom]);
+    const cam = camera;
+    const isExternalChange =
+      Math.abs(cam.zoom - lastSetZoom.current) > 0.001 ||
+      Math.abs(cam.x    - lastSetX.current)    > 1 ||
+      Math.abs(cam.y    - lastSetY.current)    > 1;
 
-  // Redibuja en cada frame + zoom suave con lerp
+    externalCameraRef.current = cam;
+
+    if (isExternalChange) {
+      // Cancelar animación en curso y saltar al nuevo valor
+      anim.current.active = false;
+      targetZoom.current = cam.zoom;
+      targetX.current    = cam.x;
+      targetY.current    = cam.y;
+      lastSetZoom.current = cam.zoom;
+      lastSetX.current    = cam.x;
+      lastSetY.current    = cam.y;
+      fastAnim.current    = false;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera]);
+
+  // Cuando el padre incrementa resetViewSignal, lanzamos animación hacia el zoom inicial
+  useEffect(() => {
+    if (resetViewSignal === 0) return;
+
+    // Arrancar desde la posición interpolada actual si hay animación en curso
+    let fromZoom: number;
+    let fromX: number;
+    let fromY: number;
+    if (anim.current.active) {
+      const elapsed = performance.now() - anim.current.startTime;
+      const raw  = Math.min(elapsed / anim.current.duration, 1);
+      const ease = 1 - Math.pow(1 - raw, 3);
+      fromZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
+      fromX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
+      fromY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+    } else {
+      fromZoom = cameraRef.current.zoom;
+      fromX    = cameraRef.current.x;
+      fromY    = cameraRef.current.y;
+    }
+
+    anim.current = {
+      startZoom: fromZoom, endZoom: initialZoom,
+      startX:    fromX,    endX:    0,
+      startY:    fromY,    endY:    0,
+      startTime: performance.now(),
+      duration:  750,
+      active:    true,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetViewSignal]);
+
+  // Redibuja en cada frame + animación de cámara
   useEffect(() => {
     let running = true;
 
-    function frame() {
+    /** ease-out cúbico: arranca rápido, frena suave pero sin cola larga */
+    function easeOutExpo(t: number): number {
+      return 1 - Math.pow(1 - t, 3);
+    }
+
+    function frame(now: number) {
       if (!running) return;
 
-      // Lerp del zoom: acerca camera.zoom hacia targetZoom suavemente
       const cam = cameraRef.current;
-      const tz = targetZoom.current;
-      if (Math.abs(cam.zoom - tz) > 0.0005) {
-        const smoothed = cam.zoom + (tz - cam.zoom) * 0.14;
-        setCamera({ ...cam, zoom: smoothed });
+      let newZoom = cam.zoom;
+      let newX    = cam.x;
+      let newY    = cam.y;
+      let changed = false;
+
+      // ── Animación basada en tiempo (clicks en tag) ───────────────────────
+      if (anim.current.active) {
+        const elapsed = now - anim.current.startTime;
+        const raw     = Math.min(elapsed / anim.current.duration, 1);
+        const ease    = easeOutExpo(raw);
+
+        newZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
+        newX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
+        newY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+        changed = true;
+
+        if (raw >= 1) {
+          anim.current.active = false;
+          newZoom = anim.current.endZoom;
+          newX    = anim.current.endX;
+          newY    = anim.current.endY;
+          // Sincronizar targets para que el lerp del scroll no interfiera
+          targetZoom.current = newZoom;
+          targetX.current    = newX;
+          targetY.current    = newY;
+        }
+      } else {
+        // ── Lerp suave para scroll/pan ────────────────────────────────────
+        const tz = targetZoom.current;
+        const tx = targetX.current;
+        const ty = targetY.current;
+        if (Math.abs(cam.zoom - tz) > 0.0005 || Math.abs(cam.x - tx) > 0.3 || Math.abs(cam.y - ty) > 0.3) {
+          newZoom = cam.zoom + (tz - cam.zoom) * 0.25;
+          newX    = cam.x    + (tx - cam.x)    * 0.25;
+          newY    = cam.y    + (ty - cam.y)    * 0.25;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        lastSetZoom.current = newZoom;
+        lastSetX.current    = newX;
+        lastSetY.current    = newY;
+        setCamera({ zoom: newZoom, x: newX, y: newY });
       }
 
       draw();
@@ -419,6 +556,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     dragging.current = true;
     lastPos.current = { x, y };
     velocity.current = { vx: 0, vy: 0 };
+    // Cancelar animación en curso al empezar a arrastrar
+    anim.current.active = false;
     lastTime.current = performance.now();
     const canvas = canvasRef.current;
     if (canvas) canvas.style.cursor = 'grabbing';
@@ -452,17 +591,20 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       velocity.current = { vx: dx / dt, vy: dy / dt };
       lastTime.current = now;
 
-      setCamera({
-        ...cameraRef.current,
-        x: cameraRef.current.x - dx,
-        y: cameraRef.current.y - dy,
-      });
+      const newX = cameraRef.current.x - dx;
+      const newY = cameraRef.current.y - dy;
+      setCamera({ ...cameraRef.current, x: newX, y: newY });
+      lastSetZoom.current = cameraRef.current.zoom;
+      lastSetX.current    = newX;
+      lastSetY.current    = newY;
+      targetX.current = newX;
+      targetY.current = newY;
 
       lastPos.current = { x: cx, y: cy };
     } else {
       // Solo detectar hover cuando los pins son visibles
       const zoom = cameraRef.current.zoom;
-      const pinsVisible = zoom >= 0.35;
+      const pinsVisible = zoom >= 0.70;
       const idea = pinsVisible
         ? hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height)
         : null;
@@ -473,7 +615,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         draw();
       }
 
-      if (canvas) canvas.style.cursor = idea ? 'pointer' : 'grab';
+      // Cursor: pointer si hay idea o si hay tag clickable
+      const overTag = !idea && !!hitTestTagScreen(tags, { x: cx, y: cy }, cameraRef.current, width, height);
+      if (canvas) canvas.style.cursor = (idea || overTag) ? 'pointer' : 'grab';
     }
   };
 
@@ -483,7 +627,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     const { x: cx, y: cy } = canvasXY(e);
     const rawDelta = e.deltaY;
     const normDelta = Math.sign(rawDelta) * Math.min(Math.abs(rawDelta), 80);
-    const factor = Math.pow(0.992, normDelta);
+    const factor = Math.pow(0.997, normDelta);
     const clamped = Math.max(0.08, Math.min(20, targetZoom.current * factor));
 
     const cam = cameraRef.current;
@@ -496,12 +640,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       y: (cy - height / 2) / clamped + cam.y,
     };
 
+    const newX = cam.x + (before.x - after.x);
+    const newY = cam.y + (before.y - after.y);
+
     targetZoom.current = clamped;
-    setCamera({
-      zoom: cam.zoom,
-      x: cam.x + (before.x - after.x),
-      y: cam.y + (before.y - after.y),
-    });
+    targetX.current = newX;
+    targetY.current = newY;
+    lastSetZoom.current = cam.zoom;
+    lastSetX.current    = newX;
+    lastSetY.current    = newY;
+    setCamera({ zoom: cam.zoom, x: newX, y: newY });
   };
 
   // Double click: si hay un pin navega a Cerebro, si no hace zoom in
@@ -524,18 +672,65 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       y: (cy - height / 2) / newTarget + cam.y,
     };
 
+    const newX = cam.x + (before.x - after.x);
+    const newY = cam.y + (before.y - after.y);
     targetZoom.current = newTarget;
-    setCamera({ zoom: cam.zoom, x: cam.x + (before.x - after.x), y: cam.y + (before.y - after.y) });
+    targetX.current = newX;
+    targetY.current = newY;
+    lastSetZoom.current = cam.zoom;
+    lastSetX.current    = newX;
+    lastSetY.current    = newY;
+    setCamera({ zoom: cam.zoom, x: newX, y: newY });
   };
 
-  // Click: un solo clic en un pin navega directamente a Cerebro
+  // Click: un solo clic en un pin navega directamente a Cerebro; en un tag hace zoom al tag
   const onClick = (e: React.MouseEvent) => {
-    if (cameraRef.current.zoom < 0.35) return;
     const { x: cx, y: cy } = canvasXY(e);
-    const idea = hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height);
-    if (idea) {
-      onSelectIdea(idea);
-      onNavigateToNote(idea);
+
+    // Prioridad 1: pin/idea (sólo si el zoom es suficiente para verlos)
+    if (cameraRef.current.zoom >= 0.70) {
+      const idea = hitTestIdea(ideas, { x: cx, y: cy }, cameraRef.current, width, height);
+      if (idea) {
+        onSelectIdea(idea);
+        // No navegamos directamente — el popup en App.tsx se encargará
+        return;
+      }
+    }
+
+    // Prioridad 2: tag (círculo) — animación ease-out hacia el interior con subtags
+    const tag = hitTestTagScreen(tags, { x: cx, y: cy }, cameraRef.current, width, height);
+    if (tag) {
+      onFocusTag(tag);
+
+      const worldR = tag.radius ?? 300;
+      const endZoom = Math.min(20, Math.min(width, height) / (worldR * 1.8));
+
+      // Si hay animación en curso, calcular la posición real interpolada en este instante
+      // para arrancar desde ahí sin salto brusco
+      let fromZoom: number;
+      let fromX: number;
+      let fromY: number;
+      if (anim.current.active) {
+        const elapsed = performance.now() - anim.current.startTime;
+        const raw  = Math.min(elapsed / anim.current.duration, 1);
+        const ease = 1 - Math.pow(1 - raw, 3);
+        fromZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
+        fromX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
+        fromY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+      } else {
+        fromZoom = cameraRef.current.zoom;
+        fromX    = cameraRef.current.x;
+        fromY    = cameraRef.current.y;
+      }
+
+      anim.current = {
+        startZoom: fromZoom, endZoom,
+        startX:    fromX,    endX: tag.x,
+        startY:    fromY,    endY: tag.y,
+        startTime: performance.now(),
+        duration:  1000,
+        active:    true,
+      };
     }
   };
 
