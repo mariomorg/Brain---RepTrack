@@ -1,6 +1,10 @@
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Note } from '../types/note.types';
 import { noteService } from '../services/noteService';
+
+
+export type SortOption = 'newest' | 'oldest' | 'alphabetical' | 'alphabetical-reverse' | 'none';
 import { inboxService } from '@features/inbox/services/inboxService';
 
 const CEREBRO_POLL_MS = 4000; // poll while inbox has PENDING/PROCESSING items
@@ -12,117 +16,111 @@ export function useCerebro() {
     const [error, setError] = useState<string | null>(null);
 
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTag, setActiveTag] = useState<string | null>(null);
-    const [activePathPrefix, setActivePathPrefix] = useState<string | null>(null);
+    const [activeTags, setActiveTags] = useState<string[]>([]);
+    const [sortBy, setSortBy] = useState<SortOption>('none');
 
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Paginación
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
 
-    const stopPolling = useCallback(() => {
-        if (pollRef.current !== null) {
-            clearInterval(pollRef.current);
-            pollRef.current = null;
-        }
+    // Cargar tags siempre
+    useEffect(() => {
+        noteService.getAllTags().then(setTags).catch(() => setTags([]));
     }, []);
 
-    const loadData = useCallback(async (quiet = false) => {
-        try {
-            if (!quiet) setLoading(true);
-            const [allNotes, allTags, pendingCount, processingItems] = await Promise.all([
-                noteService.findAll(),
-                noteService.getAllTags(),
-                inboxService.countPending(),
-                inboxService.findByStatus('PROCESSING'),
-            ]);
-            setNotes(allNotes);
-            setTags(allTags);
-
-            // Auto-poll while the inbox has any PENDING or PROCESSING items.
-            const hasActiveWork = pendingCount > 0 || processingItems.length > 0;
-            if (hasActiveWork) {
-                if (pollRef.current === null) {
-                    pollRef.current = setInterval(() => loadData(true), CEREBRO_POLL_MS);
+    // Buscar notas (por texto o por tags)
+    useEffect(() => {
+        let cancelled = false;
+        async function fetchNotes() {
+            setLoading(true);
+            setError(null);
+            try {
+                let result: Note[] = [];
+                if (searchQuery.trim()) {
+                    result = await noteService.search(searchQuery.trim());
+                } else if (activeTags.length > 0) {
+                    // Obtener todas las notas y filtrar por tags en el cliente
+                    const allNotes = await noteService.findAll();
+                    result = allNotes.filter(note =>
+                        activeTags.every(tag => note.tags.includes(tag))
+                    );
+                } else {
+                    result = await noteService.findAll();
                 }
-            } else {
-                stopPolling();
+                if (!cancelled) setNotes(result);
+            } catch (e) {
+                if (!cancelled) setError('Error al buscar notas');
+            } finally {
+                if (!cancelled) setLoading(false);
             }
-        } catch (e) {
-            setError('Error al cargar el cerebro');
-        } finally {
-            if (!quiet) setLoading(false);
         }
+        fetchNotes();
+        return () => { cancelled = true; };
+    }, [searchQuery, activeTags]);
+
+    const toggleTag = useCallback((tag: string) => {
+        setActiveTags(prev =>
+            prev.includes(tag)
+                ? prev.filter(t => t !== tag)
+                : [...prev, tag]
+        );
     }, [stopPolling]);
 
-    // Load on mount
-    useEffect(() => {
-        loadData();
-        return stopPolling; // cleanup on unmount
-    }, [loadData, stopPolling]);
-
-    // Refresh whenever the user switches back to this tab.
-    useEffect(() => {
-        const onVisible = () => {
-            if (document.visibilityState === 'visible') loadData();
-        };
-        document.addEventListener('visibilitychange', onVisible);
-        window.addEventListener('focus', () => loadData());
-        return () => {
-            document.removeEventListener('visibilitychange', onVisible);
-            window.removeEventListener('focus', () => loadData());
-        };
-    }, [loadData]);
-
-    const filteredNotes = useMemo(() => {
-        let result: Note[] = notes;
-
-        // Filter by path prefix (tree selection)
-        if (activePathPrefix) {
-            result = result.filter(
-                (n: Note) =>
-                    n.path === activePathPrefix ||
-                    n.path?.startsWith(activePathPrefix + '/')
-            );
-        }
-
-        // Filter by flat tag chip
-        if (activeTag) {
-            result = result.filter((n: Note) => n.tags?.some((t) => t.name === activeTag));
-        }
-
-        // Filter by search
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter(
-                (n: Note) =>
-                    n.title.toLowerCase().includes(q) ||
-                    n.summary?.toLowerCase().includes(q) ||
-                    n.tags?.some((t) => t.name.toLowerCase().includes(q))
-            );
-        }
-        return result;
-    }, [notes, activeTag, activePathPrefix, searchQuery]);
-
-    const selectTag = useCallback((tag: string | null) => {
-        setActiveTag(tag);
-        setActivePathPrefix(null); // clear tree when using flat chips
+    const clearTags = useCallback(() => {
+        setActiveTags([]);
     }, []);
 
-    const selectPathPrefix = useCallback((prefix: string | null) => {
-        setActivePathPrefix(prefix);
-        setActiveTag(null); // clear flat chips when using tree
-    }, []);
+    // Ordenar notas según sortBy
+    const sortedNotes = useMemo(() => {
+        return [...notes].sort((a, b) => {
+            switch (sortBy) {
+                case 'newest':
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'oldest':
+                    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                case 'alphabetical':
+                    return a.title.localeCompare(b.title);
+                case 'alphabetical-reverse':
+                    return b.title.localeCompare(a.title);
+                case 'none':
+                default:
+                    return 0;
+            }
+        });
+    }, [notes, sortBy]);
+
+    // Paginación
+    const totalPages = Math.ceil(sortedNotes.length / itemsPerPage);
+    const paginatedNotes = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return sortedNotes.slice(startIndex, startIndex + itemsPerPage);
+    }, [sortedNotes, currentPage, itemsPerPage]);
+
+    // Resetear a página 1 cuando cambian los filtros
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, activeTags, sortBy]);
 
     return {
         notes,
-        filteredNotes,
+        filteredNotes: paginatedNotes,
         tags,
         loading,
         error,
         searchQuery,
         setSearchQuery,
-        activeTag,
-        selectTag,
+        activeTags,
+        toggleTag,
         activePathPrefix,
         selectPathPrefix,
-        refresh: loadData,
+        clearTags,
+        sortBy,
+        setSortBy,
+        // Paginación
+        currentPage,
+        setCurrentPage,
+        totalPages,
+        totalItems: sortedNotes.length,
     };
 }
+
