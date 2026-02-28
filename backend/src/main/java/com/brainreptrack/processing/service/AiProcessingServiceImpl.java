@@ -403,13 +403,18 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         }
 
         // Tags: one NoteTag per classification level that survived clamping,
-        // storing the AI's per-level confidence. Use limit() not contains() to
-        // avoid substring false-positives (e.g. "ia" inside "inteligencia-artificial").
+        // storing the AI's per-level confidence. The tag name is the full
+        // accumulated path up to that level (e.g. "dev", "dev/frontend", "dev/frontend/react").
         int keptLevels = path.split("/").length;
-        Set<NoteTag> tags = ordered.stream()
+        String[] pathParts = path.split("/");
+        Set<NoteTag> tags = new LinkedHashSet<>();
+        List<ClasificacionItem> keptLevelsItems = ordered.stream()
                 .limit(keptLevels)
-                .map(c -> new NoteTag(c.getEtiqueta(), c.getConfianza() / 100.0))
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+                .collect(Collectors.toList());
+        for (int i = 0; i < keptLevelsItems.size(); i++) {
+            String accumulatedPath = String.join("/", Arrays.copyOfRange(pathParts, 0, i + 1));
+            tags.add(new NoteTag(accumulatedPath, keptLevelsItems.get(i).getConfianza() / 100.0));
+        }
 
         // Tags must exist in the tags registry BEFORE note_tags rows are inserted.
         upsertTagHierarchy(path);
