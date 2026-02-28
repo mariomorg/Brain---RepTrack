@@ -19,11 +19,12 @@ function hashTag(tag: string): number {
 }
 
 interface TagChipProps {
-    tag: string;
+    tag: string | null | undefined;
     onClick?: () => void;
 }
 
 export function TagChip({ tag, onClick }: TagChipProps) {
+    if (!tag) return null;
     const palette = PALETTES[hashTag(tag)];
     const label = tag.startsWith('#') ? tag : `#${tag}`;
     return (

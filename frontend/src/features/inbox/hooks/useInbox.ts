@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { InboxItem, CreateInboxItemRequest } from '../types/inbox.types';
+import { InboxItem, CreateInboxItemRequest, ProcessResult } from '../types/inbox.types';
 import { inboxService } from '../services/inboxService';
 
 const POLL_INTERVAL_MS = 3000; // poll while PENDING/PROCESSING items exist
+const MAX_PROCESSED_ITEMS = 20; // show last N processed items in inbox
 
 export function useInbox() {
     const [pendingItems, setPendingItems] = useState<InboxItem[]>([]);
+    const [processedItems, setProcessedItems] = useState<InboxItem[]>([]);
     const [pendingCount, setPendingCount] = useState<number>(0);
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -14,16 +16,22 @@ export function useInbox() {
     const loadPending = useCallback(async () => {
         try {
             setLoading(true);
-            const [pending, processing, awaitingApproval] = await Promise.all([
+            const [pending, processing, awaitingApproval, processed] = await Promise.all([
                 inboxService.findByStatus('PENDING'),
                 inboxService.findByStatus('PROCESSING'),
                 inboxService.findByStatus('AWAITING_APPROVAL'),
+                inboxService.findByStatus('PROCESSED'),
             ]);
             // Merge and sort by creation date (newest first)
             const all = [...pending, ...processing, ...awaitingApproval]
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setPendingItems(all);
             setPendingCount(all.length);
+            // Show recent processed items (newest first, capped)
+            const recentProcessed = [...processed]
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .slice(0, MAX_PROCESSED_ITEMS);
+            setProcessedItems(recentProcessed);
         } catch (e) {
             setError('Error al cargar el inbox');
         } finally {
@@ -36,7 +44,6 @@ export function useInbox() {
     }, [loadPending]);
 
     // Poll every POLL_INTERVAL_MS only while items are being AI-processed.
-    // Items in AWAITING_APPROVAL pause here — they wait for user action.
     useEffect(() => {
         const hasActiveItems = pendingItems.some(
             item => item.status === 'PENDING' || item.status === 'PROCESSING'
@@ -77,26 +84,37 @@ export function useInbox() {
         }
     }, [loadPending]);
 
-    const approve = useCallback(async (id: string) => {
+    /**
+     * Unified "Procesar" action — calls the new backend endpoint that
+     * creates the Note, generates Markdown and returns suggestions.
+     */
+    const procesar = useCallback(async (id: string): Promise<ProcessResult> => {
         try {
-            await inboxService.approve(id);
+            const result = await inboxService.procesar(id);
             await loadPending();
+            return result;
         } catch (e) {
-            setError('Error al aprobar el elemento');
+            setError('Error al procesar el elemento');
+            throw e;
         }
     }, [loadPending]);
 
-    const reject = useCallback(async (id: string) => {
+    const createMarkdown = useCallback(async (id: string): Promise<string> => {
+        return inboxService.createMarkdown(id);
+    }, []);
+
+    const reprocess = useCallback(async (id: string) => {
         try {
-            await inboxService.reject(id);
+            await inboxService.reprocess(id);
             await loadPending();
-        } catch (e) {
-            setError('Error al rechazar el elemento');
+        } catch {
+            setError('Error al reprocesar el elemento');
         }
     }, [loadPending]);
 
     return {
         pendingItems,
+        processedItems,
         pendingCount,
         loading,
         submitting,
@@ -104,8 +122,9 @@ export function useInbox() {
         capture,
         dismiss,
         remove,
-        approve,
-        reject,
+        procesar,
+        createMarkdown,
+        reprocess,
         refresh: loadPending,
     };
 }

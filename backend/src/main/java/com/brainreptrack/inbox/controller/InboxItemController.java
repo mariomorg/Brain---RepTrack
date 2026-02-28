@@ -3,6 +3,7 @@ package com.brainreptrack.inbox.controller;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.service.InboxItemService;
+import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -71,20 +72,21 @@ public class InboxItemController {
     }
 
     /**
-     * User approves the AI classification result – creates the Note and marks item
-     * PROCESSED.
+     * Unified "Procesar" — creates Note + generates Markdown + analyzes
+     * suggestions.
+     * Replaces the old approve/reject flow.
      */
-    @PostMapping("/{id}/approve")
-    public ResponseEntity<ApiResponse<InboxItemResponseDto>> approve(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(service.approve(id)));
+    @PostMapping("/{id}/procesar")
+    public ResponseEntity<ApiResponse<ProcessResultDto>> processItem(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.processItem(id)));
     }
 
     /**
-     * User rejects the AI classification result – marks item REJECTED without
-     * creating a Note.
+     * Generates a Markdown document from the item's raw content and AI proposals,
+     * saves it as a .md file on disk, and returns the file path.
      */
-    @PostMapping("/{id}/reject")
-    public ResponseEntity<ApiResponse<InboxItemResponseDto>> reject(@PathVariable UUID id) {
-        return ResponseEntity.ok(ApiResponse.ok(service.reject(id)));
+    @PostMapping("/{id}/create-markdown")
+    public ResponseEntity<ApiResponse<String>> createMarkdown(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.createMarkdown(id)));
     }
 }

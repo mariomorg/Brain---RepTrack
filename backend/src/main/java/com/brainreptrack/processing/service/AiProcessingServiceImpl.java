@@ -7,26 +7,34 @@ import com.brainreptrack.note.domain.NoteTag;
 import com.brainreptrack.note.domain.Tag;
 import com.brainreptrack.note.repository.NoteRepository;
 import com.brainreptrack.note.repository.TagRepository;
+import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.processing.dto.AiAnalysisResult;
 import com.brainreptrack.processing.dto.ClasificacionItem;
 import com.brainreptrack.processing.dto.OllamaResponse;
 import com.brainreptrack.processing.dto.PathProposal;
+import com.brainreptrack.processing.dto.ProcessResultDto;
+import com.brainreptrack.processing.dto.SuggestionDto;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AiProcessingServiceImpl implements AiProcessingService {
 
     private final InboxItemRepository inboxItemRepository;
@@ -34,6 +42,31 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     private final TagRepository tagRepository;
     private final OllamaClient ollamaClient;
     private final ObjectMapper objectMapper;
+    private final SuggestionAnalyzer suggestionAnalyzer;
+    private final Path markdownOutputDir;
+
+    public AiProcessingServiceImpl(
+            InboxItemRepository inboxItemRepository,
+            NoteRepository noteRepository,
+            TagRepository tagRepository,
+            OllamaClient ollamaClient,
+            ObjectMapper objectMapper,
+            SuggestionAnalyzer suggestionAnalyzer,
+            @Value("${markdown.output-dir:./markdown-notes}") String markdownOutputDirStr) {
+        this.inboxItemRepository = inboxItemRepository;
+        this.noteRepository = noteRepository;
+        this.tagRepository = tagRepository;
+        this.ollamaClient = ollamaClient;
+        this.objectMapper = objectMapper;
+        this.suggestionAnalyzer = suggestionAnalyzer;
+        this.markdownOutputDir = Paths.get(markdownOutputDirStr);
+        try {
+            Files.createDirectories(this.markdownOutputDir);
+            log.info("[AI] Markdown output directory: {}", this.markdownOutputDir.toAbsolutePath());
+        } catch (IOException e) {
+            log.error("[AI] Could not create markdown output directory: {}", e.getMessage());
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Public API
@@ -123,28 +156,167 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     }
 
     // -------------------------------------------------------------------------
-    // User approval
+    // Unified "Procesar" — replaces old approve/reject flow
     // -------------------------------------------------------------------------
 
     @Override
     @Transactional
-    public void approve(UUID inboxItemId) {
-        log.info("[AI] User approved InboxItem {}", inboxItemId);
+    public ProcessResultDto processItem(UUID inboxItemId) {
+        log.info("[AI] processItem started for InboxItem {}", inboxItemId);
+
         InboxItem item = inboxItemRepository.findById(inboxItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("InboxItem", inboxItemId));
 
-        AiAnalysisResult result;
-        try {
-            result = parseResult(item.getProposalsJson());
-        } catch (Exception e) {
-            throw new IllegalStateException("Could not parse proposals for InboxItem " + inboxItemId, e);
+        // ── 1. Parse existing classification ────────────────────────────────
+        AiAnalysisResult classification = null;
+        if (item.getProposalsJson() != null) {
+            try {
+                classification = parseResult(item.getProposalsJson());
+            } catch (Exception e) {
+                log.warn("[AI] Could not parse proposalsJson for {}: {}", inboxItemId, e.getMessage());
+            }
         }
 
-        autoCreateNote(item, result);
+        // ── 2. Auto-create Note (equivalent to old approve) ─────────────────
+        if (classification != null) {
+            autoCreateNote(item, classification);
+        }
 
+        // ── 3. Mark as PROCESSED ────────────────────────────────────────────
         item.setStatus("PROCESSED");
+        item.setProcessedAt(LocalDateTime.now());
         inboxItemRepository.save(item);
-        log.info("[AI] Note created and InboxItem {} marked PROCESSED", inboxItemId);
+
+        // ── 4. Generate Markdown + save to file ────────────────────────────
+        String markdown = "";
+        try {
+            String mdPrompt = buildMarkdownPrompt(item, classification);
+            OllamaResponse mdResponse = ollamaClient.generate(mdPrompt);
+            markdown = stripCodeFences(mdResponse.getResponse());
+            saveMarkdownToFile(item, markdown);
+        } catch (Exception e) {
+            log.error("[AI] Markdown generation failed for {}: {}", inboxItemId, e.getMessage());
+        }
+
+        // ── 5. Analyse suggestions (decoupled — rule-based) ─────────────────
+        List<SuggestionDto> suggestions = suggestionAnalyzer.analyze(item);
+
+        // ── 6. Build combined response ──────────────────────────────────────
+        InboxItemResponseDto itemDto = InboxItemResponseDto.builder()
+                .id(item.getId())
+                .rawText(item.getRawText())
+                .detectedType(item.getDetectedType())
+                .status(item.getStatus())
+                .proposalsJson(item.getProposalsJson())
+                .finalJson(item.getFinalJson())
+                .outputPath(item.getOutputPath())
+                .createdAt(item.getCreatedAt())
+                .processedAt(item.getProcessedAt())
+                .build();
+
+        log.info("[AI] processItem completed for InboxItem {} — {} suggestions generated",
+                inboxItemId, suggestions.size());
+
+        return ProcessResultDto.builder()
+                .item(itemDto)
+                .classification(classification)
+                .markdown(markdown)
+                .suggestions(suggestions)
+                .build();
+    }
+
+    // -------------------------------------------------------------------------
+    // Markdown generation
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public String generateMarkdown(UUID inboxItemId) {
+        log.info("[AI] Generating markdown for InboxItem {}", inboxItemId);
+        InboxItem item = inboxItemRepository.findById(inboxItemId)
+                .orElseThrow(() -> new ResourceNotFoundException("InboxItem", inboxItemId));
+
+        AiAnalysisResult result = null;
+        if (item.getProposalsJson() != null) {
+            try {
+                result = parseResult(item.getProposalsJson());
+            } catch (Exception ignored) {
+                // proposals might be absent or malformed – proceed without them
+            }
+        }
+
+        String prompt = buildMarkdownPrompt(item, result);
+        OllamaResponse ollamaResponse = ollamaClient.generate(prompt);
+        String markdown = stripCodeFences(ollamaResponse.getResponse());
+
+        // Save to file and store path
+        String filePath = saveMarkdownToFile(item, markdown);
+
+        log.info("[AI] Markdown generated and saved to {} for InboxItem {}", filePath, inboxItemId);
+        return filePath;
+    }
+
+    /**
+     * Writes markdown content to a .md file and updates the InboxItem's outputPath.
+     * Returns the absolute path of the saved file.
+     */
+    private String saveMarkdownToFile(InboxItem item, String markdown) {
+        try {
+            Files.createDirectories(markdownOutputDir);
+
+            // Build filename from item: sanitize first line of rawText or use ID
+            String baseName = buildFileName(item);
+            String fileName = baseName + ".md";
+            Path filePath = markdownOutputDir.resolve(fileName);
+
+            // Avoid overwriting: append counter if file exists
+            int counter = 1;
+            while (Files.exists(filePath)) {
+                fileName = baseName + "_" + counter + ".md";
+                filePath = markdownOutputDir.resolve(fileName);
+                counter++;
+            }
+
+            Files.writeString(filePath, markdown, StandardCharsets.UTF_8);
+
+            String absolutePath = filePath.toAbsolutePath().toString();
+            item.setOutputPath(absolutePath);
+            inboxItemRepository.save(item);
+
+            log.info("[AI] Markdown file saved: {}", absolutePath);
+            return absolutePath;
+        } catch (IOException e) {
+            log.error("[AI] Failed to save markdown file for InboxItem {}: {}", item.getId(), e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * Builds a safe filename from the InboxItem content.
+     */
+    private String buildFileName(InboxItem item) {
+        String raw = item.getRawText();
+        if (raw != null && !raw.isBlank()) {
+            // Use first line, strip markdown heading markers, limit length
+            String firstLine = raw.lines().filter(l -> !l.isBlank()).findFirst().orElse("");
+            firstLine = firstLine.replaceFirst("^#+\\s*", "").strip();
+            if (!firstLine.isBlank()) {
+                // Sanitize: keep only alphanumeric, spaces, hyphens
+                String safe = firstLine.replaceAll("[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\\s-]", "")
+                        .strip()
+                        .replaceAll("\\s+", "_");
+                if (safe.length() > 80) {
+                    safe = safe.substring(0, 80);
+                }
+                if (!safe.isBlank()) {
+                    String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+                    return safe + "_" + timestamp;
+                }
+            }
+        }
+        // Fallback: use UUID + timestamp
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        return "note_" + item.getId().toString().substring(0, 8) + "_" + timestamp;
     }
 
     // -------------------------------------------------------------------------
@@ -436,6 +608,59 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 + rawText;
     }
 
+    /**
+     * Builds the prompt for converting raw inbox content into a clean Markdown
+     * note.
+     */
+    private String buildMarkdownPrompt(InboxItem item, AiAnalysisResult result) {
+        StringBuilder context = new StringBuilder();
+
+        if (result != null) {
+            // Build path string from classification
+            List<ClasificacionItem> clasif = result.getClasificacion();
+            if (clasif != null && !clasif.isEmpty()) {
+                String path = clasif.stream()
+                        .sorted(Comparator.comparingInt(ClasificacionItem::getNivel))
+                        .map(ClasificacionItem::getEtiqueta)
+                        .collect(Collectors.joining(" > "));
+                context.append("Classification path: ").append(path).append("\n");
+            }
+            String motivo = result.getMotivo();
+            if (motivo != null && !motivo.isBlank()) {
+                context.append("AI summary context: ").append(motivo).append("\n");
+            }
+        }
+
+        String detectedType = item.getDetectedType() != null ? item.getDetectedType() : "TEXT";
+        String createdAt = item.getCreatedAt() != null ? item.getCreatedAt().toString() : "unknown";
+
+        return """
+                You are a Markdown note generator for a personal knowledge base.
+                Convert the following raw content into a clean, well-structured Markdown note.
+
+                Context provided:
+                """ + context + """
+                Detected content type: """ + detectedType + """
+
+                Rules:
+                - Start with a single # heading derived from the content (NOT from the classification path).
+                - Use ## subheadings if the content has clear sections.
+                - Convert any lists, enumerations or steps into proper Markdown lists (- or 1.).
+                - Preserve URLs as [text](url) links.
+                - At the bottom, add a metadata block like:
+                  ---
+                  tags: tag1, tag2, tag3
+                  type: """ + detectedType + """
+                created: """ + createdAt + """
+                - "tags" must be the classification labels (if provided), otherwise infer 2-4 relevant keywords.
+                - Do NOT add a preamble like "Here is the note:" — output ONLY the Markdown.
+                - Do NOT wrap output in code fences.
+                - Do NOT wrap output in a JSON object like {"note": "..."}. Return raw Markdown text only.
+
+                Raw content to convert:
+                """ + item.getRawText();
+    }
+
     /** Builds a human-readable indented tree from all stored tags. */
     private String buildTagTreeString(List<Tag> allTags) {
         Map<String, List<Tag>> byParent = allTags.stream()
@@ -472,6 +697,45 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     // -------------------------------------------------------------------------
     // Response parser
     // -------------------------------------------------------------------------
+
+    /**
+     * Strips wrapping Markdown code-fences and/or JSON wrappers
+     * (e.g. {"note": "..."}) that the model may add around its output.
+     */
+    private String stripCodeFences(String text) {
+        if (text == null)
+            return "";
+        String stripped = text.strip();
+
+        // 1. Strip markdown code fences: ```markdown ... ``` or ``` ... ```
+        if (stripped.startsWith("```")) {
+            stripped = stripped
+                    .replaceFirst("^```(?:markdown)?\\s*", "")
+                    .replaceFirst("\\s*```$", "")
+                    .strip();
+        }
+
+        // 2. Unwrap JSON object wrapper: {"note": "...", ...} or {"markdown": "..."}
+        if (stripped.startsWith("{") && stripped.endsWith("}")) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = objectMapper.readValue(stripped, Map.class);
+                // Try common keys the model might use
+                for (String key : List.of("note", "markdown", "content", "text", "output")) {
+                    Object val = map.get(key);
+                    if (val instanceof String s && !s.isBlank()) {
+                        log.info("[AI] Unwrapped JSON key '{}' from markdown response", key);
+                        stripped = s.strip();
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {
+                // Not valid JSON — leave as is
+            }
+        }
+
+        return stripped;
+    }
 
     /**
      * Parses the JSON text returned by Ollama.

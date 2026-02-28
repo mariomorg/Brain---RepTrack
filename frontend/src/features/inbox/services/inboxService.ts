@@ -4,6 +4,7 @@ import {
     InboxItem,
     CreateInboxItemRequest,
     UpdateInboxItemRequest,
+    ProcessResult,
 } from '../types/inbox.types';
 
 const BASE = '/inbox';
@@ -47,13 +48,22 @@ export const inboxService = {
         return inboxService.update(id, { status: 'PROCESSED' });
     },
 
-    approve: async (id: string): Promise<InboxItem> => {
-        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/${id}/approve`);
+    /**
+     * Unified "Procesar" endpoint — replaces the old approve/reject flow.
+     * Creates Note + generates Markdown + analyses suggestions in one call.
+     */
+    procesar: async (id: string): Promise<ProcessResult> => {
+        const res = await apiClient.post<ApiResponse<ProcessResult>>(`${BASE}/${id}/procesar`);
         return res.data.data;
     },
 
-    reject: async (id: string): Promise<InboxItem> => {
-        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/${id}/reject`);
+    reprocess: async (id: string): Promise<InboxItem> => {
+        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/${id}/process`);
+        return res.data.data;
+    },
+
+    createMarkdown: async (id: string): Promise<string> => {
+        const res = await apiClient.post<ApiResponse<string>>(`${BASE}/${id}/create-markdown`);
         return res.data.data;
     },
 };

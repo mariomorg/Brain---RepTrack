@@ -4,6 +4,7 @@ import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
+import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -56,17 +57,15 @@ public class InboxItemServiceImpl implements InboxItemService {
     }
 
     @Override
-    public InboxItemResponseDto approve(UUID id) {
+    public ProcessResultDto processItem(UUID id) {
         findOrThrow(id);
-        aiProcessingService.approve(id);
-        return toDto(findOrThrow(id));
+        return aiProcessingService.processItem(id);
     }
 
     @Override
-    public InboxItemResponseDto reject(UUID id) {
-        InboxItem entity = findOrThrow(id);
-        entity.setStatus("REJECTED");
-        return toDto(repository.save(entity));
+    public String createMarkdown(UUID id) {
+        findOrThrow(id); // ensures the item exists
+        return aiProcessingService.generateMarkdown(id);
     }
 
     @Override
