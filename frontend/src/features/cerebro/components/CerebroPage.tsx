@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useCerebro } from '../hooks/useCerebro';
 import { NoteCard } from './NoteCard';
 import { TagFilter } from './TagFilter';
@@ -11,6 +12,7 @@ const SearchIcon = () => (
 );
 
 export default function CerebroPage() {
+    const [searchParams] = useSearchParams();
     const {
         filteredNotes,
         tags,
@@ -32,6 +34,16 @@ export default function CerebroPage() {
     const [showTagSuggestions, setShowTagSuggestions] = useState(false);
     const [tagQuery, setTagQuery] = useState('');
     const [inputValue, setInputValue] = useState('');
+
+    // Pre-fill search from URL param (e.g. navigating from Inbox carousel)
+    useEffect(() => {
+        const searchFromUrl = searchParams.get('search');
+        if (searchFromUrl) {
+            setInputValue(searchFromUrl);
+            setSearchQuery(searchFromUrl);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     
     // Filtrar tags para autocompletado
     const filteredTagSuggestions = tags.filter(tag => 
