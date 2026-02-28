@@ -44,12 +44,16 @@ public class NoteServiceImpl implements NoteService {
         }
 
         Note note = builder.build();
+
         if (dto.getTags() != null) {
             ensureTags(dto.getTags());
             note.setTags(toNoteTags(dto.getTags()));
         }
-        if (dto.getConfidenceScore() != null)
+
+        if (dto.getConfidenceScore() != null) {
             note.setConfidenceScore(dto.getConfidenceScore());
+        }
+
         return toDto(noteRepository.save(note));
     }
 
@@ -62,44 +66,51 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(readOnly = true)
     public List<NoteResponseDto> findAll() {
-        return noteRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
+        return noteRepository.findAll().stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<NoteResponseDto> findByType(String type) {
-        return noteRepository.findByType(type).stream().map(this::toDto).collect(Collectors.toList());
+        return noteRepository.findByType(type).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<NoteResponseDto> search(String keyword) {
         return noteRepository.findByTitleContainingIgnoreCase(keyword).stream()
-                .map(this::toDto).collect(Collectors.toList());
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
     public NoteResponseDto update(UUID id, NoteRequestDto dto) {
         Note note = findOrThrow(id);
-        if (dto.getTitle() != null)
-            note.setTitle(dto.getTitle());
-        if (dto.getPath() != null)
-            note.setPath(dto.getPath());
-        if (dto.getType() != null)
-            note.setType(dto.getType());
-        if (dto.getSummary() != null)
-            note.setSummary(dto.getSummary());
+
+        if (dto.getTitle() != null) note.setTitle(dto.getTitle());
+        if (dto.getPath() != null) note.setPath(dto.getPath());
+        if (dto.getType() != null) note.setType(dto.getType());
+        if (dto.getSummary() != null) note.setSummary(dto.getSummary());
+
         if (dto.getTags() != null) {
             ensureTags(dto.getTags());
             note.setTags(toNoteTags(dto.getTags()));
         }
-        if (dto.getConfidenceScore() != null)
+
+        if (dto.getConfidenceScore() != null) {
             note.setConfidenceScore(dto.getConfidenceScore());
+        }
+
         if (dto.getInboxItemId() != null) {
             InboxItem item = inboxItemRepository.findById(dto.getInboxItemId())
                     .orElseThrow(() -> new ResourceNotFoundException("InboxItem", dto.getInboxItemId()));
             note.setInboxItem(item);
         }
+
         return toDto(noteRepository.save(note));
     }
 
@@ -112,13 +123,62 @@ public class NoteServiceImpl implements NoteService {
     @Override
     @Transactional(readOnly = true)
     public List<NoteResponseDto> findByTag(String tagName) {
-        return noteRepository.findByTagName(tagName).stream().map(this::toDto).collect(Collectors.toList());
+        return noteRepository.findByTagName(tagName).stream()
+                .map(this::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<String> getAllTags() {
         return noteRepository.findAllDistinctTags();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<NoteResponseDto> findSimilares(UUID id) {
+        Note base = findOrThrow(id);
+
+        List<String> baseTags = base.getTags().stream()
+                .map(NoteTag::getTagName)
+                .toList();
+
+        double baseConfidence = base.getConfidenceScore() != null ? base.getConfidenceScore() : 0.0;
+
+        List<Note> candidates = noteRepository.findAll().stream()
+                .filter(n -> !n.getId().equals(id))
+                .toList();
+
+        // Score: +2 por tag igual, penaliza diferencia de confianza
+        List<NoteScore> scored = candidates.stream()
+                .map(n -> {
+                    int tagMatches = (int) n.getTags().stream()
+                            .filter(t -> baseTags.contains(t.getTagName()))
+                            .count();
+
+                    double confidence = n.getConfidenceScore() != null ? n.getConfidenceScore() : 0.0;
+                    double confidenceDiff = Math.abs(confidence - baseConfidence);
+                    double score = tagMatches * 2 - confidenceDiff;
+
+                    return new NoteScore(n, score);
+                })
+                .sorted((a, b) -> Double.compare(b.score, a.score))
+                .toList();
+
+        return scored.stream()
+                .limit(5)
+                .map(ns -> toDto(ns.note))
+                .toList();
+    }
+
+    private static class NoteScore {
+        private final Note note;
+        private final double score;
+
+        private NoteScore(Note note, double score) {
+            this.note = note;
+            this.score = score;
+        }
     }
 
     // -------------------------------------------------------
@@ -152,6 +212,12 @@ public class NoteServiceImpl implements NoteService {
         Set<NoteTagDto> tagDtos = n.getTags().stream()
                 .map(t -> new NoteTagDto(t.getTagName(), t.getConfidenceLevel()))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        String originalContent = null;
+        if (n.getInboxItem() != null) {
+            originalContent = n.getInboxItem().getRawText();
+        }
+
         return NoteResponseDto.builder()
                 .id(n.getId())
                 .title(n.getTitle())
@@ -162,6 +228,7 @@ public class NoteServiceImpl implements NoteService {
                 .inboxItemId(n.getInboxItem() != null ? n.getInboxItem().getId() : null)
                 .confidenceScore(n.getConfidenceScore())
                 .tags(tagDtos)
+                .originalContent(originalContent)
                 .build();
     }
 }

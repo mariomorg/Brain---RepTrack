@@ -1,3 +1,4 @@
+
 .resource-detail-layout {
   display: flex;
   gap: 2rem;
@@ -13,6 +14,16 @@
 }
 .resource-section {
   margin-bottom: 2rem;
+}
+.resource-detail-main h1 {
+  font-size: 2rem;
+  margin-bottom: 1.2rem;
+  color: #2a2a2a;
+}
+.resource-section strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #4f46e5;
 }
 .resource-detail-aside {
   flex: 1;
@@ -43,9 +54,29 @@
 }
 .aside-similar h3 {
   margin-bottom: 0.7rem;
+  color: #6366f1;
+  font-size: 1.1rem;
 }
 .aside-similar ul {
   list-style: disc inside;
   color: #555;
   padding-left: 1rem;
+}
+.aside-similar a {
+  color: #4f46e5;
+  text-decoration: none;
+  transition: text-decoration 0.2s;
+}
+.aside-similar a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 900px) {
+  .resource-detail-layout {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .resource-detail-main, .resource-detail-aside {
+    min-width: 0;
+    width: 100%;
+  }
 }

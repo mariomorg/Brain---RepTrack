@@ -21,4 +21,7 @@ public class NoteResponseDto {
     private Double confidenceScore;
     /** Tags from note_tags with optional per-tag confidence level. */
     private Set<NoteTagDto> tags;
+
+    /** Contenido original del recurso (rawText de InboxItem relacionado). */
+    private String originalContent;
 }
