@@ -176,16 +176,29 @@ CREATE TABLE IF NOT EXISTS users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username        VARCHAR(64)  NOT NULL UNIQUE,
     email           VARCHAR(255) NOT NULL UNIQUE,
-    password_hash   VARCHAR(255) NOT NULL,
+    password_hash   VARCHAR(255),                  -- NULL para usuarios OAuth2
     display_name    VARCHAR(128),
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
     last_login      TIMESTAMP,
+    oauth2_provider VARCHAR(32),                   -- 'google', 'github', NULL si es local
+    oauth2_subject  VARCHAR(255),                  -- ID único inmutable del proveedor
     CONSTRAINT username_not_empty CHECK (trim(username) <> ''),
     CONSTRAINT email_not_empty    CHECK (trim(email) <> '')
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email    ON users(email);
+
+-- Migración segura para bases de datos existentes (idempotente)
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth2_provider VARCHAR(32);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth2_subject  VARCHAR(255);
+
+-- Índice único parcial: los NULL (usuarios locales) no generan conflicto entre sí
+-- IF NOT EXISTS evita error en reinicios; WHERE descarta filas sin proveedor OAuth2
+CREATE UNIQUE INDEX IF NOT EXISTS uq_oauth2
+    ON users(oauth2_provider, oauth2_subject)
+    WHERE oauth2_provider IS NOT NULL AND oauth2_subject IS NOT NULL;
 
 -- =========================================================
 --  Datos de prueba para desarrollo

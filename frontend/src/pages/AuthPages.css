@@ -342,6 +342,57 @@
     box-shadow: 0 4px 14px rgba(124, 58, 237, 0.2);
 }
 
+/* ── OAuth2 divider ── */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 0;
+    color: var(--color-text-muted, #888);
+    font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border, rgba(255,255,255,0.1));
+}
+
+/* ── GitHub button ── */
+.auth-btn--github {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 20px;
+    margin-top: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: #24292e;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+.auth-btn--github:hover:not(:disabled) {
+    background: #2f363d;
+    transform: translateY(-1px);
+}
+
+.auth-btn--github:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.auth-btn--github:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* =====================================================
    Responsive
    ===================================================== */
