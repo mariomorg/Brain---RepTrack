@@ -14,6 +14,41 @@ export function hitTestTag(tags: TagNode[], worldPoint: { x: number; y: number }
 }
 
 /**
+ * Hit test de TagNode en coordenadas de PANTALLA.
+ * Devuelve el tag más pequeño (más profundo) que contenga el punto,
+ * para que al hacer click en un subtag dentro de un tag padre se seleccione el hijo.
+ */
+export function hitTestTagScreen(
+  tags: TagNode[],
+  screenPoint: { x: number; y: number },
+  camera: Camera,
+  canvasW: number,
+  canvasH: number,
+): TagNode | null {
+  let best: TagNode | null = null;
+  let bestRadius = Infinity;
+
+  for (const tag of tags) {
+    const worldR = tag.radius ?? 300;
+    const screenR = worldR * camera.zoom;
+    // Sólo tags que tengan un radio visible en pantalla
+    if (screenR < 10) continue;
+
+    const sc = worldToScreen(camera, tag.x, tag.y, canvasW, canvasH);
+    const dx = screenPoint.x - sc.x;
+    const dy = screenPoint.y - sc.y;
+    if (dx * dx + dy * dy <= screenR * screenR) {
+      // Preferir el círculo más pequeño (tag más específico)
+      if (screenR < bestRadius) {
+        bestRadius = screenR;
+        best = tag;
+      }
+    }
+  }
+  return best;
+}
+
+/**
  * Hit test en coordenadas de PANTALLA.
  * Detecta tanto el círculo del pin como la pill del texto.
  * canvas{W,H} son las dimensiones del canvas para worldToScreen.

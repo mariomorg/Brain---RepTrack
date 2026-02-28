@@ -185,11 +185,93 @@ function ideaPos(tagPaths: string[], id: string): { x: number; y: number } {
   if (candidates.length === 0) return { x: 0, y: 0 };
   const tag = candidates.reduce((a, b) => (b.level > a.level ? b : a));
 
-  // Ángulo determinista a partir del hash del id
-  const hash = id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const angle = (hash * 137.508) % 360; // ángulo de áurea para distribución uniforme
-  const r = tagWorldRadius(tag) * 0.45; // dentro del 45% del radio del círculo
+  // Hash más disperso combinando posición de caracteres
+  const hash = id.split('').reduce((acc, c, i) => acc + c.charCodeAt(0) * (i + 1) * 31, 0);
+  const hash2 = id.split('').reduce((acc, c, i) => acc + c.charCodeAt(0) * (i + 3) * 17, 7);
+  // Ángulo usando áurea sobre hash disperso
+  const angle = (hash * 137.508 + hash2 * 97.3) % 360;
+  // Radio variable entre 20% y 65% del radio del círculo
+  const rFraction = 0.20 + ((hash2 * 1.618) % 1) * 0.45;
+  const r = tagWorldRadius(tag) * rFraction;
   return polar(tag.x, tag.y, r, angle);
+}
+
+/**
+ * Post-proceso: mueve los pins para que no se solapen entre sí
+ * ni caigan encima del texto (centro del tag y centros de subtags).
+ */
+function distributeIdeas(ideas: Array<{ id: string; tagPaths: string[]; x: number; y: number }>): void {
+  const tagGroups = new Map<string, typeof ideas>();
+  for (const idea of ideas) {
+    const candidates = idea.tagPaths
+      .map(tp => TAGS.find(t => t.path === tp))
+      .filter(Boolean) as TagNode[];
+    if (candidates.length === 0) continue;
+    const homeTag = candidates.reduce((a, b) => (b.level > a.level ? b : a));
+    if (!tagGroups.has(homeTag.path)) tagGroups.set(homeTag.path, []);
+    tagGroups.get(homeTag.path)!.push(idea);
+  }
+
+  for (const [tagPath, group] of tagGroups) {
+    const tag = TAGS.find(t => t.path === tagPath);
+    if (!tag) continue;
+    const tagR   = tagWorldRadius(tag);
+    const maxR   = tagR * 0.78;
+    // Radio de exclusión del label propio (~30% del radio del tag)
+    const labelR = tagR * 0.28;
+    // Zonas de exclusión de los subtags hijos (sus labels)
+    const childZones = TAGS
+      .filter(t => t.parentPath === tagPath)
+      .map(c => ({ x: c.x, y: c.y, r: tagWorldRadius(c) * 0.38 }));
+
+    const positions = group.map(idea => ({ x: idea.x, y: idea.y }));
+    const MIN_DIST  = tagR * 0.16;
+
+    for (let iter = 0; iter < 80; iter++) {
+      for (let a = 0; a < positions.length; a++) {
+        const pa = positions[a];
+
+        // Repulsión entre pins
+        for (let b = a + 1; b < positions.length; b++) {
+          const pb = positions[b];
+          const dx = pb.x - pa.x, dy = pb.y - pa.y;
+          const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          if (d < MIN_DIST) {
+            const push = (MIN_DIST - d) / 2;
+            pa.x -= (dx / d) * push; pa.y -= (dy / d) * push;
+            pb.x += (dx / d) * push; pb.y += (dy / d) * push;
+          }
+        }
+
+        // Repulsión del label propio (centro del tag)
+        {
+          const dx = pa.x - tag.x, dy = pa.y - tag.y;
+          const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          if (d < labelR) {
+            const push = labelR - d + 1;
+            pa.x += (dx / d) * push; pa.y += (dy / d) * push;
+          }
+        }
+
+        // Repulsión de los labels de subtags hijos
+        for (const z of childZones) {
+          const dx = pa.x - z.x, dy = pa.y - z.y;
+          const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          if (d < z.r) {
+            const push = z.r - d + 1;
+            pa.x += (dx / d) * push; pa.y += (dy / d) * push;
+          }
+        }
+
+        // Contener dentro del círculo
+        const dx = pa.x - tag.x, dy = pa.y - tag.y;
+        const d  = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        if (d > maxR) { pa.x = tag.x + (dx / d) * maxR; pa.y = tag.y + (dy / d) * maxR; }
+      }
+    }
+
+    group.forEach((idea, i) => { idea.x = positions[i].x; idea.y = positions[i].y; });
+  }
 }
 
 // Ideas mock — posición calculada automáticamente dentro de su tag
@@ -225,3 +307,6 @@ export const IDEAS: Idea[] = [
   { id: 'i29', title: 'Índices y neveras',           excerpt: 'Optimizar inventario.',              createdAt: '2026-01-03', tagPaths: ['uni/bases_de_datos/indexes', 'hogar/electrodomesticos/neveras'],            ...ideaPos(['uni/bases_de_datos/indexes', 'hogar/electrodomesticos/neveras'], 'i29') },
   { id: 'i30', title: 'Planificación y limpieza',    excerpt: 'Organizar tareas.',                  createdAt: '2026-01-02', tagPaths: ['uni/sistemas_operativos/planificacion_cpu', 'hogar/limpieza'],              ...ideaPos(['uni/sistemas_operativos/planificacion_cpu', 'hogar/limpieza'], 'i30') },
 ];
+
+// Redistribuir pins para evitar solapamientos y que no caigan sobre el texto
+distributeIdeas(IDEAS);

@@ -35,9 +35,10 @@ def health():
 async def transcribe(file: UploadFile = File(...)):
     # Valida que sea un archivo de audio
     allowed_types = {
-        "audio/mpeg", "audio/mp4", "audio/wav", "audio/webm",
-        "audio/ogg", "audio/x-m4a", "audio/m4a", "audio/flac",
-        "video/webm",  # grabaciones del navegador suelen venir así
+        "audio/mpeg", "audio/mp3", "audio/mp4",
+        "audio/wav", "audio/x-wav", "audio/wave",  # wav: Windows / macOS / Linux
+        "audio/webm", "audio/ogg", "audio/x-m4a", "audio/m4a",
+        "audio/flac", "video/webm",
     }
     if file.content_type and file.content_type not in allowed_types:
         raise HTTPException(

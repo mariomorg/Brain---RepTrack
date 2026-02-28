@@ -6,9 +6,17 @@ interface SidePanelProps {
   selectedTag: TagNode | null;
   selectedIdea: Idea | null;
   onSelectIdea: (idea: Idea) => void;
+  allTags?: TagNode[];
+  onSelectTag?: (tag: TagNode) => void;
 }
 
-export const SidePanel: React.FC<SidePanelProps> = ({ selectedTag, selectedIdea, onSelectIdea }) => {
+export const SidePanel: React.FC<SidePanelProps> = ({
+  selectedTag,
+  selectedIdea,
+  onSelectIdea,
+  allTags = [],
+  onSelectTag,
+}) => {
   const [ideas, setIdeas] = useState<Idea[]>([]);
 
   useEffect(() => {
@@ -19,12 +27,34 @@ export const SidePanel: React.FC<SidePanelProps> = ({ selectedTag, selectedIdea,
     }
   }, [selectedTag]);
 
+  const subTags = selectedTag
+    ? allTags.filter(t => t.parentPath === selectedTag.path)
+    : [];
+
   return (
     <aside className="side-panel">
       {selectedTag ? (
         <div className="tag-details">
           <h2>{selectedTag.name}</h2>
           <div className="tag-path">{selectedTag.path}</div>
+          {subTags.length > 0 && (
+            <div className="subtags-section">
+              <h3>Subtemas</h3>
+              <ul className="subtags-list">
+                {subTags.map(sub => (
+                  <li
+                    key={sub.id}
+                    className="subtag-item"
+                    tabIndex={0}
+                    onClick={() => onSelectTag?.(sub)}
+                    onKeyDown={e => { if (e.key === 'Enter') onSelectTag?.(sub); }}
+                  >
+                    <span className="subtag-name">{sub.name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="tag-ideas-count">Ideas: {ideas.length}</div>
         </div>
       ) : (
