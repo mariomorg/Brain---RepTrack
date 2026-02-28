@@ -29,9 +29,12 @@ const useWindowSize = () => {
   return size;
 };
 
+import { useLocation } from 'react-router-dom';
+
 const MapPage: React.FC = () => {
   const { width, height } = useWindowSize();
   const navigate = useNavigate();
+  const location = useLocation();
   const canvasWidth  = Math.max(300, width - 240);
   const canvasHeight = Math.max(300, height);
 
@@ -42,6 +45,20 @@ const MapPage: React.FC = () => {
   const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
   const [visibleTags, setVisibleTags]   = React.useState<TagNode[]>([]);
   const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
+  // Si hay ideaId en la query, centrar y seleccionar esa idea
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const ideaId = params.get('ideaId');
+    if (ideaId && visibleIdeas.length > 0) {
+      const idea = visibleIdeas.find(i => i.id === ideaId);
+      if (idea) {
+        setSelectedIdea(idea);
+        // Centrar cámara en la idea y hacer más zoom
+        setCamera({ x: idea.x, y: idea.y, zoom: 1 });
+      }
+    }
+    // eslint-disable-next-line
+  }, [location.search, visibleIdeas]);
 
   React.useEffect(() => {
     fetchMapData()
@@ -83,7 +100,7 @@ const MapPage: React.FC = () => {
     setSelectedIdea(idea);
   };
   const handleNavigateToNote = (idea: Idea) => {
-    navigate(`/cerebro?search=${encodeURIComponent(idea.title)}`);
+    navigate(`/recurso/${idea.id}`);
   };
   const handleFocusTag = (tag: TagNode) => {
     setFocusTagPath(tag.path);

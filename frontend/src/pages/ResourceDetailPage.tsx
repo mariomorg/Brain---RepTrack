@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
 import { noteService } from '../features/cerebro/services/noteService';
@@ -8,9 +8,11 @@ import './ResourceDetailPage.css';
 
 export default function ResourceDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [note, setNote] = useState<Note | null>(null);
   const [similares, setSimilares] = useState<Note[]>([]);
+  const [similaresConTags, setSimilaresConTags] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,6 +32,17 @@ export default function ResourceDetailPage() {
         const sims = await noteService.findSimilares(id);
         if (cancelled) return;
         setSimilares(sims);
+
+        // Filtrar recursos similares que compartan al menos una tag
+        if (n && n.tags && n.tags.length > 0) {
+          const baseTags = n.tags.map((t) => t.name);
+          const conTags = sims.filter(sim =>
+            sim.tags && sim.tags.some(tag => baseTags.includes(tag.name))
+          );
+          setSimilaresConTags(conTags);
+        } else {
+          setSimilaresConTags([]);
+        }
       } catch (e: any) {
         if (cancelled) return;
         setError(e?.response?.data?.message || e?.message || 'Error cargando recurso');
@@ -50,7 +63,21 @@ export default function ResourceDetailPage() {
   return (
     <div className="resource-detail-layout">
       <main className="resource-detail-main">
+
         <h1>{note.title}</h1>
+        {note.tags && note.tags.length > 0 && (
+          <div style={{ margin: '8px 0 16px 0', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {note.tags.map((tag) => (
+              <span key={tag.name} style={{
+                background: '#e0e0e0',
+                borderRadius: 12,
+                padding: '2px 10px',
+                fontSize: 13,
+                marginRight: 4
+              }}>{tag.name}</span>
+            ))}
+          </div>
+        )}
 
         <section className="resource-section">
           <strong>Recurso original:</strong>
@@ -67,19 +94,36 @@ export default function ResourceDetailPage() {
 
       <aside className="resource-detail-aside">
         <div className="aside-buttons">
-          <button className="aside-btn" type="button">Ver en mapa</button>
+          <button
+            className="aside-btn"
+            type="button"
+            onClick={() => {
+              if (note) {
+                navigate(`/mapa?ideaId=${note.id}`);
+              }
+            }}
+          >
+            Ver en mapa
+          </button>
           <button className="aside-btn" type="button">Reinterpretar</button>
         </div>
 
         <div className="aside-similar">
           <h3>Recursos similares</h3>
           <ul>
-            {similares.length === 0 && <li>No hay recursos similares.</li>}
-            {similares.map((sim) => (
-              <li key={sim.id}>
-                <Link to={`/recurso/${sim.id}`}>{sim.title}</Link>
-              </li>
-            ))}
+            {note && note.tags && note.tags.length > 0 ? (
+              similaresConTags.length === 0 ? (
+                <li>No se encontraron recursos similares.</li>
+              ) : (
+                similaresConTags.map((sim) => (
+                  <li key={sim.id}>
+                    <Link to={`/recurso/${sim.id}`}>{sim.title}</Link>
+                  </li>
+                ))
+              )
+            ) : (
+              <li>No se encontraron recursos similares.</li>
+            )}
           </ul>
         </div>
       </aside>
