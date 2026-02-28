@@ -30,4 +30,7 @@ public class NoteResponseDto {
 
     /** Tipo detectado del contenido original (TEXT, LINK, FILE, etc.). */
     private String detectedType;
+
+    /** URL de origen del recurso (para videos, enlaces, etc.). */
+    private String sourceUrl;
 }

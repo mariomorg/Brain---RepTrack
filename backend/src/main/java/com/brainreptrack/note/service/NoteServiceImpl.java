@@ -220,12 +220,16 @@ public class NoteServiceImpl implements NoteService {
         String originalContent = null;
         String aiSummary = null;
         String detectedType = null;
+        String sourceUrl = null;
         if (n.getInboxItem() != null) {
             detectedType = n.getInboxItem().getDetectedType();
             aiSummary = n.getInboxItem().getAiSummary();
+            sourceUrl = n.getInboxItem().getSourceUrl();
             String raw = n.getInboxItem().getRawText();
-            // Para archivos (FILE), mostrar solo la primera línea (título/nombre)
-            if ("FILE".equalsIgnoreCase(detectedType) && raw != null) {
+            // Para archivos (FILE) y videos (VIDEO_REF), mostrar solo la primera línea
+            // (título/nombre)
+            if (("FILE".equalsIgnoreCase(detectedType) || "VIDEO_REF".equalsIgnoreCase(detectedType))
+                    && raw != null) {
                 int lineEnd = raw.indexOf('\n');
                 originalContent = lineEnd > 0 ? raw.substring(0, lineEnd).trim() : raw.trim();
             } else {
@@ -246,6 +250,7 @@ public class NoteServiceImpl implements NoteService {
                 .originalContent(originalContent)
                 .aiSummary(aiSummary)
                 .detectedType(detectedType)
+                .sourceUrl(sourceUrl)
                 .build();
     }
 }

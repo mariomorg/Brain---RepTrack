@@ -18,6 +18,7 @@ export interface Note {
     originalContent: string | null;
     aiSummary: string | null;
     detectedType: string | null;
+    sourceUrl: string | null;
 }
 
 export interface CreateNoteRequest {

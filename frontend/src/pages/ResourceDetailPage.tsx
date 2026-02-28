@@ -83,6 +83,15 @@ export default function ResourceDetailPage() {
           <strong>Recurso original:</strong>
           {note.detectedType === 'FILE' ? (
             <p className="file-title-display">📄 {note.originalContent || note.title}</p>
+          ) : note.detectedType === 'VIDEO_REF' ? (
+            <div className="file-title-display">
+              <p>🎬 {note.originalContent || note.title}</p>
+              {note.sourceUrl && (
+                <a href={note.sourceUrl} target="_blank" rel="noopener noreferrer" className="video-source-link">
+                  🔗 {note.sourceUrl}
+                </a>
+              )}
+            </div>
           ) : (
             <ReactMarkdown>{note.originalContent || 'Sin contenido original.'}</ReactMarkdown>
           )}

@@ -51,12 +51,26 @@ public class SummaryGenerationService {
         }
 
         // ── Step 1: Determine if the content needs web enrichment ────────
-        boolean needsWebSearch = needsWebEnrichment(rawText);
+        // VIDEO_REF with actual transcript: skip web search (transcript is the source)
+        // VIDEO_REF without transcript (only URL): treat like a LINK, use web search
+        boolean isVideoWithTranscript = "VIDEO_REF".equalsIgnoreCase(detectedType)
+                && hasActualTranscript(rawText);
+        boolean isVideoWithoutTranscript = "VIDEO_REF".equalsIgnoreCase(detectedType)
+                && !isVideoWithTranscript;
+        boolean needsWebSearch = !isVideoWithTranscript && needsWebEnrichment(rawText);
 
         String webContext = "";
         if (needsWebSearch) {
             // ── Step 2: Extract search query from the content ────────────
-            String searchQuery = extractSearchQuery(rawText);
+            String searchQuery;
+            if (isVideoWithoutTranscript) {
+                // For VIDEO_REF without transcript, use the video title (first line)
+                // instead of asking Llama to extract a query from a URL
+                searchQuery = extractVideoTitleForSearch(rawText);
+                log.info("[Summary] VIDEO_REF without transcript — using title for search: {}", searchQuery);
+            } else {
+                searchQuery = extractSearchQuery(rawText);
+            }
             log.info("[Summary] Content needs enrichment. Searching web for: {}", searchQuery);
 
             // ── Step 3: Fetch web results ────────────────────────────────
@@ -73,12 +87,80 @@ public class SummaryGenerationService {
         }
 
         // ── Step 4: Generate the extensive summary ───────────────────────
-        return buildExtensiveSummary(rawText, detectedType, webContext);
+        // If VIDEO_REF but no transcript, treat as generic content (web-enriched)
+        String effectiveType = detectedType;
+        if ("VIDEO_REF".equalsIgnoreCase(detectedType) && !isVideoWithTranscript) {
+            log.info("[Summary] VIDEO_REF without transcript — falling back to generic summary");
+            effectiveType = "LINK";
+        }
+        return buildExtensiveSummary(rawText, effectiveType, webContext);
     }
 
     // ─────────────────────────────────────────────────────────────────────
     // Internal helpers
     // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Checks whether the rawText for a VIDEO_REF contains an actual transcript
+     * (not just a URL or a short title). A real transcript should have content
+     * beyond the first line (title) and be substantially longer than a URL.
+     */
+    private boolean hasActualTranscript(String rawText) {
+        if (rawText == null || rawText.isBlank())
+            return false;
+
+        // Check if there's content beyond the first line
+        int newlineIdx = rawText.indexOf('\n');
+        if (newlineIdx < 0) {
+            // Single line — just a URL or title, no transcript
+            return false;
+        }
+
+        String afterTitle = rawText.substring(newlineIdx + 1).trim();
+        // If the content after the title is empty or very short (< 50 chars),
+        // it's not a real transcript
+        if (afterTitle.length() < 50) {
+            return false;
+        }
+
+        // If what remains is just a URL, it's not a transcript
+        if (afterTitle.matches("^https?://[^\\s]+$")) {
+            return false;
+        }
+
+        log.debug("[Summary] VIDEO_REF has actual transcript ({} chars after title)", afterTitle.length());
+        return true;
+    }
+
+    /**
+     * Extracts the video title (first line of rawText) to use as a search query
+     * when the VIDEO_REF has no transcript. Falls back to extractSearchQuery()
+     * if the first line looks like a URL.
+     */
+    private String extractVideoTitleForSearch(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return extractSearchQuery(rawText);
+        }
+        String firstLine = rawText.contains("\n")
+                ? rawText.substring(0, rawText.indexOf('\n')).trim()
+                : rawText.trim();
+
+        // If first line is a URL, not a title — fall back to AI extraction
+        if (firstLine.matches("^https?://.*")) {
+            return extractSearchQuery(rawText);
+        }
+
+        // Clean up title: remove hashtags, special chars, keep core title
+        String cleanTitle = firstLine.replaceAll("#\\w+", "").replaceAll("[|\\-–—]", " ").trim();
+        cleanTitle = cleanTitle.replaceAll("\\s+", " ");
+
+        // Truncate very long titles
+        if (cleanTitle.length() > 80) {
+            cleanTitle = cleanTitle.substring(0, 80);
+        }
+
+        return cleanTitle.isBlank() ? extractSearchQuery(rawText) : cleanTitle;
+    }
 
     /**
      * Determines whether the raw content has enough substance for a good
@@ -194,42 +276,82 @@ public class SummaryGenerationService {
     private String buildExtensiveSummary(String rawText, String detectedType, String webContext) {
         String typeHint = detectedType != null ? detectedType : "TEXT";
 
-        String systemPrompt = """
-                You are a knowledgeable research assistant that creates comprehensive,
-                well-structured summaries in Spanish. You write in a clear, informative
-                style, covering all important aspects of the topic. Your summaries should
-                be educational and useful for someone building a personal knowledge base.
-                """;
-
         StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("""
-                Genera un resumen EXTENSO y DETALLADO sobre el tema principal del siguiente contenido.
+        String systemPrompt;
 
-                INSTRUCCIONES:
-                1. Identifica el tema central del contenido proporcionado.
-                2. Escribe un resumen completo que cubra:
-                   - Definición y contexto del tema
-                   - Puntos clave y conceptos importantes
-                   - Detalles relevantes, ejemplos o aplicaciones
-                   - Información complementaria que enriquezca la comprensión
-                3. El resumen debe tener al menos 3-5 párrafos bien desarrollados.
-                4. Usa un tono informativo y claro, como si fuera una entrada de enciclopedia personal.
-                5. Si se proporciona información adicional de internet, INTÉGRALA naturalmente
-                   en el resumen sin mencionarla como fuente separada.
-                6. Escribe SIEMPRE en español.
-                7. NO uses formato markdown (ni #, ni **, ni listas con -).
-                   Escribe texto plano con párrafos separados por líneas en blanco.
+        if ("VIDEO_REF".equalsIgnoreCase(typeHint)) {
+            // ── Video-specific: system + user prompts focused on transcript ──
+            systemPrompt = """
+                    Eres un asistente que resume transcripciones de video en español.
+                    Tu ÚNICA fuente de información es la transcripción que se te proporciona.
+                    NUNCA inventes, supongas ni añadas información que no aparezca
+                    explícitamente en la transcripción. Si la transcripción es confusa o
+                    incompleta, resume solo lo que efectivamente se dice.
+                    """;
 
-                """);
+            // Extract title (first line) for explicit reference
+            String title = rawText.contains("\n")
+                    ? rawText.substring(0, rawText.indexOf('\n')).trim()
+                    : rawText.trim();
 
-        userPrompt.append("Tipo de contenido original: ").append(typeHint).append("\n\n");
-        userPrompt.append("CONTENIDO ORIGINAL:\n").append(rawText).append("\n");
+            userPrompt.append("El siguiente texto es la TRANSCRIPCIÓN LITERAL del audio de un video.\n");
+            userPrompt.append("Título del video: ").append(title).append("\n\n");
+            userPrompt.append("""
+                    REGLAS ESTRICTAS:
+                    1. Resume ÚNICAMENTE lo que se dice en la transcripción de abajo.
+                    2. NO busques información externa ni la inventes.
+                    3. Si el título no coincide con el contenido hablado, ignora el título
+                       y resume lo que realmente se dice en el audio.
+                    4. Estructura el resumen en 3-5 párrafos que reflejen los puntos
+                       principales discutidos en el video.
+                    5. Escribe SIEMPRE en español, en texto plano sin markdown.
+                    6. NO empieces con frases como "Me alegra poder ayudarte" ni
+                       "A continuación te presento". Ve directo al resumen.
 
-        if (!webContext.isBlank()) {
-            userPrompt.append(webContext);
+                    TRANSCRIPCIÓN DEL VIDEO:
+                    \"\"\"
+                    """);
+            userPrompt.append(rawText).append("\n\"\"\"\n");
+            userPrompt.append("\nRESUMEN DEL VIDEO:");
+
+        } else {
+            // ── Generic prompt for other content types ──
+            systemPrompt = """
+                    You are a knowledgeable research assistant that creates comprehensive,
+                    well-structured summaries in Spanish. You write in a clear, informative
+                    style, covering all important aspects of the topic. Your summaries should
+                    be educational and useful for someone building a personal knowledge base.
+                    """;
+
+            userPrompt.append("""
+                    Genera un resumen EXTENSO y DETALLADO sobre el tema principal del siguiente contenido.
+
+                    INSTRUCCIONES:
+                    1. Identifica el tema central del contenido proporcionado.
+                    2. Escribe un resumen completo que cubra:
+                       - Definición y contexto del tema
+                       - Puntos clave y conceptos importantes
+                       - Detalles relevantes, ejemplos o aplicaciones
+                       - Información complementaria que enriquezca la comprensión
+                    3. El resumen debe tener al menos 3-5 párrafos bien desarrollados.
+                    4. Usa un tono informativo y claro, como si fuera una entrada de enciclopedia personal.
+                    5. Si se proporciona información adicional de internet, INTÉGRALA naturalmente
+                       en el resumen sin mencionarla como fuente separada.
+                    6. Escribe SIEMPRE en español.
+                    7. NO uses formato markdown (ni #, ni **, ni listas con -).
+                       Escribe texto plano con párrafos separados por líneas en blanco.
+
+                    """);
+
+            userPrompt.append("Tipo de contenido original: ").append(typeHint).append("\n\n");
+            userPrompt.append("CONTENIDO ORIGINAL:\n").append(rawText).append("\n");
+
+            if (!webContext.isBlank()) {
+                userPrompt.append(webContext);
+            }
+
+            userPrompt.append("\nRESUMEN EXTENSO:");
         }
-
-        userPrompt.append("\nRESUMEN EXTENSO:");
 
         try {
             OllamaResponse response = ollamaClient.generateText(

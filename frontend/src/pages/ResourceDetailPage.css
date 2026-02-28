@@ -100,6 +100,21 @@
   margin: 0.5rem 0;
 }
 
+.video-source-link {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #2563eb;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.video-source-link:hover {
+  text-decoration: underline;
+  color: #1d4ed8;
+}
+
 @media (max-width: 900px) {
   .resource-detail-layout {
     flex-direction: column;
