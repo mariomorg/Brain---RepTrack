@@ -514,7 +514,7 @@ function ProcessedCard({
 
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, remove, procesar, createMarkdown, reprocess } = useInbox();
+    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -528,6 +528,7 @@ export default function InboxPage() {
     const [showLinkModal, setShowLinkModal] = useState(false);
     const [recording, setRecording] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
+    const [transcribing, setTranscribing] = useState(false);
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
     // Track process results (suggestions) per-item by id
     const [processResults, setProcessResults] = useState<Record<string, ProcessResult>>({});
@@ -644,16 +645,45 @@ export default function InboxPage() {
         e.preventDefault();
         setIsDragging(false);
         const files = Array.from(e.dataTransfer.files);
-        if (files.length) { addFiles(files); showToast(`${files.length} archivo${files.length > 1 ? 's' : ''} añadido${files.length > 1 ? 's' : ''}`); }
+        if (files.length) {
+            const audioFiles = files.filter(f => f.type.startsWith('audio/'));
+            const otherFiles = files.filter(f => !f.type.startsWith('audio/'));
+            if (audioFiles.length > 0) audioFiles.forEach(f => { void transcribeAudioFile(f); });
+            if (otherFiles.length > 0) { addFiles(otherFiles); showToast(`${otherFiles.length} archivo${otherFiles.length > 1 ? 's' : ''} añadido${otherFiles.length > 1 ? 's' : ''}`); }
+        }
         // Also handle dropped text/URLs
         const droppedText = e.dataTransfer.getData('text/plain');
         if (droppedText && !files.length) setText(prev => prev ? prev + '\n' + droppedText : droppedText);
     };
 
+    /* ── Transcribe audio file via backend ── */
+    const transcribeAudioFile = useCallback(async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            setTranscribing(true);
+            const apiClient = (await import('@shared/api/apiClient')).default;
+            await apiClient.post('/inbox/audio', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            await refresh();
+            showToast('Audio transcrito y guardado ✓');
+        } catch {
+            showToast('Error al transcribir el audio', 'error');
+        } finally {
+            setTranscribing(false);
+        }
+    }, [refresh]);
+
     /* ── File input handlers ── */
     const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
-        if (files.length) addFiles(files);
+        if (files.length) {
+            const audioFiles = files.filter(f => f.type.startsWith('audio/'));
+            const otherFiles = files.filter(f => !f.type.startsWith('audio/'));
+            if (audioFiles.length > 0) audioFiles.forEach(f => { void transcribeAudioFile(f); });
+            if (otherFiles.length > 0) addFiles(otherFiles);
+        }
         e.target.value = '';
     };
 
@@ -681,15 +711,15 @@ export default function InboxPage() {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mr = new MediaRecorder(stream);
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+            const mr = new MediaRecorder(stream, { mimeType });
             audioChunksRef.current = [];
-            mr.ondataavailable = e => audioChunksRef.current.push(e.data);
-            mr.onstop = () => {
-                const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                const file = new File([blob], `grabacion-${Date.now()}.webm`, { type: 'audio/webm' });
-                addFiles([file]);
+            mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+            mr.onstop = async () => {
                 stream.getTracks().forEach(t => t.stop());
-                showToast('Audio guardado');
+                const blob = new Blob(audioChunksRef.current, { type: mimeType });
+                const file = new File([blob], `grabacion-${Date.now()}.webm`, { type: mimeType });
+                await transcribeAudioFile(file);
             };
             mr.start();
             mediaRecorderRef.current = mr;
@@ -1123,14 +1153,20 @@ export default function InboxPage() {
                             {/* Mic button */}
                             <button
                                 className={`capture-toolbar-btn${recording ? ' mic-active' : ''}`}
-                                title={recording ? 'Detener grabación' : 'Grabar audio'}
+                                title={recording ? 'Detener y transcribir' : 'Grabar audio'}
                                 onClick={handleMicClick}
+                                disabled={transcribing}
                             >
                                 {recording ? <StopIcon /> : <MicIcon />}
                             </button>
 
-                            {/* Recording badge */}
-                            {recording && (
+                            {/* Recording / transcribing badge */}
+                            {transcribing ? (
+                                <span className="recording-badge" style={{ color: '#a78bfa', background: 'rgba(167,139,250,.12)', borderColor: 'rgba(167,139,250,.3)' }}>
+                                    <span className="recording-dot" style={{ background: '#a78bfa', animation: 'none' }} />
+                                    Transcribiendo…
+                                </span>
+                            ) : recording && (
                                 <span className="recording-badge">
                                     <span className="recording-dot" />
                                     {Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:{(recordingSeconds % 60).toString().padStart(2, '0')}
