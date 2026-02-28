@@ -71,11 +71,6 @@ const StopIcon = () => (
         <rect x="4" y="4" width="16" height="16" rx="2" />
     </svg>
 );
-const CheckIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="20 6 9 17 4 12" />
-    </svg>
-);
 
 /* ─────────────────────────── Types ─────────────────────────── */
 interface AttachedFile {
@@ -207,6 +202,12 @@ export default function InboxPage() {
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
+    const [carouselIndex, setCarouselIndex] = useState(0);
+    const [carouselPaused, setCarouselPaused] = useState(false);
+    // slotNotes: las 3 notas actualmente renderizadas en cada slot
+    const [slotNotes, setSlotNotes] = useState<(Note | null)[]>([null, null, null]);
+    // slotVisible: controla el crossfade de cada slot
+    const [slotVisible, setSlotVisible] = useState([true, true, true]);
     const [isDragging, setIsDragging] = useState(false);
     const [showLinkModal, setShowLinkModal] = useState(false);
     const [recording, setRecording] = useState(false);
@@ -224,9 +225,52 @@ export default function InboxPage() {
     /* Load recent notes */
     useEffect(() => {
         noteService.findAll()
-            .then(notes => setRecentNotes(notes.slice(0, 4)))
+            .then(notes => setRecentNotes(notes.slice(0, 20)))
             .catch(() => setRecentNotes([]));
     }, []);
+
+    /* Inicializar slots cuando se cargan las notas */
+    useEffect(() => {
+        if (recentNotes.length === 0) return;
+        setSlotNotes([
+            recentNotes[0] ?? null,
+            recentNotes[1] ?? null,
+            recentNotes[2] ?? null,
+        ]);
+        setSlotVisible([true, true, true]);
+    }, [recentNotes]);
+
+    /* Avanzar: crossfade slot a slot */
+    const advanceCarousel = useCallback((nextIdx?: number) => {
+        const next = nextIdx !== undefined ? nextIdx : (carouselIndex + 1) % recentNotes.length;
+        // Fade out slot 0
+        setSlotVisible([false, true, true]);
+        setTimeout(() => {
+            // Cambiar contenido mientras slot 0 está invisible
+            setSlotNotes([
+                recentNotes[next] ?? null,
+                recentNotes[(next + 1) % recentNotes.length] ?? null,
+                recentNotes[(next + 2) % recentNotes.length] ?? null,
+            ]);
+            setCarouselIndex(next);
+            // Esperar un frame para que React pinte el nuevo contenido antes del fade in
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setSlotVisible([true, true, true]);
+                });
+            });
+        }, 500);
+    }, [carouselIndex, recentNotes]);
+
+    /* Carrusel automático */
+    useEffect(() => {
+        if (recentNotes.length <= 3) return;
+        const interval = setInterval(() => {
+            if (carouselPaused) return;
+            advanceCarousel();
+        }, 3500);
+        return () => clearInterval(interval);
+    }, [recentNotes, carouselPaused, advanceCarousel]);
 
     /* Toast auto-dismiss */
     useEffect(() => {
@@ -453,6 +497,56 @@ export default function InboxPage() {
                 }
 
                 .mic-active { color: #ef4444 !important; }
+
+                .sidebar-scroll-indicator {
+                    display: none;
+                }
+
+                /* ── Carrusel de tarjetas ── */
+                .carousel-dots {
+                    display: flex;
+                    gap: 5px;
+                    margin-bottom: 16px;
+                    flex-wrap: wrap;
+                    align-items: center;
+                }
+                .carousel-dot {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 50%;
+                    border: none;
+                    background: var(--color-border);
+                    cursor: pointer;
+                    padding: 0;
+                    transition: background 0.3s, width 0.3s, border-radius 0.3s;
+                }
+                .carousel-dot--active {
+                    background: var(--color-primary);
+                    width: 18px;
+                    border-radius: 3px;
+                }
+
+                .carousel-stack {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+
+                /* Transición de opacidad pura — muy suave */
+                .carousel-card {
+                    transition: opacity 0.8s ease;
+                    will-change: opacity;
+                }
+                .carousel-card--pos1 {
+                    transition: opacity 0.8s ease 0.08s;
+                    transform: scale(0.97);
+                    transform-origin: top center;
+                }
+                .carousel-card--pos2 {
+                    transition: opacity 0.8s ease 0.16s;
+                    transform: scale(0.94);
+                    transform-origin: top center;
+                }
             `}</style>
 
             {/* Toast */}
@@ -607,10 +701,19 @@ export default function InboxPage() {
                 </div>
 
                 {/* ── Right sidebar ── */}
-                <aside className="inbox-sidebar">
+                <aside
+                    className="inbox-sidebar"
+                    onMouseEnter={() => setCarouselPaused(true)}
+                    onMouseLeave={() => setCarouselPaused(false)}
+                >
                     <div className="inbox-sidebar__title">
                         <BrainIcon />
                         Desde tu Cerebro
+                        {carouselPaused && (
+                            <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                                pausado
+                            </span>
+                        )}
                     </div>
                     {recentNotes.length === 0 ? (
                         <div style={{ color: 'var(--color-text-muted)', fontSize: 13 }}>
@@ -618,7 +721,34 @@ export default function InboxPage() {
                         </div>
                     ) : (
                         <>
-                            {recentNotes.map(note => <BrainMiniCard key={note.id} note={note} />)}
+                            {/* Dots indicadores */}
+                            <div className="carousel-dots">
+                                {recentNotes.map((_, i) => (
+                                    <button
+                                        key={i}
+                                        className={`carousel-dot${i === carouselIndex ? ' carousel-dot--active' : ''}`}
+                                        onClick={() => advanceCarousel(i)}
+                                    />
+                                ))}
+                            </div>
+
+                            {/* Carrusel de tarjetas */}
+                            <div className="carousel-stack">
+                                {slotNotes.map((note, offset) => note && (
+                                    <div
+                                        key={offset}
+                                        className={`carousel-card carousel-card--pos${offset}`}
+                                        style={{
+                                            opacity: slotVisible[offset] ? (offset === 0 ? 1 : offset === 1 ? 0.5 : 0.2) : 0,
+                                            cursor: 'pointer',
+                                        }}
+                                        onClick={() => navigate(`/cerebro?search=${encodeURIComponent(note.title)}`)}
+                                    >
+                                        <BrainMiniCard note={note} />
+                                    </div>
+                                ))}
+                            </div>
+
                             <span className="see-all-link" onClick={() => navigate('/cerebro')}>
                                 Ver todo el cerebro →
                             </span>
