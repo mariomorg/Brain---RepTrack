@@ -1,20 +1,120 @@
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { inboxService } from '@features/inbox/services/inboxService';
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
-function Layout({ children }: LayoutProps) {
+/* ---- SVG icons ---- */
+const InboxIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
+  </svg>
+);
+
+const BrainIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96-.46 2.5 2.5 0 01-1.07-4.85A3 3 0 016.5 9a3 3 0 012-2.83V4.5A2.5 2.5 0 019.5 2z" />
+    <path d="M14.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 004.96-.46 2.5 2.5 0 001.07-4.85A3 3 0 0117.5 9a3 3 0 00-2-2.83V4.5A2.5 2.5 0 0014.5 2z" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+  </svg>
+);
+
+const UserIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+function Layout({ children }: Readonly<LayoutProps>) {
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  useEffect(() => {
+    inboxService.countPending()
+      .then(setPendingCount)
+      .catch(() => setPendingCount(0));
+  }, []);
+
   return (
-    <div>
-      <header>
-        <nav>
-          <Link to="/topics">Topics</Link>
-          <Link to="/sessions">Sessions</Link>
-          <Link to="/profile">Profile</Link>
+    <div className="app-layout">
+      {/* Sidebar */}
+      <aside className="sidebar">
+        {/* Brand */}
+        <div className="sidebar__brand">
+          <div className="sidebar__avatar">U</div>
+          <div className="sidebar__brand-text">
+            <span className="sidebar__brand-name">Unified</span>
+            <span className="sidebar__brand-sub">Inbox Digital</span>
+          </div>
+        </div>
+
+        {/* Main nav */}
+        <nav className="sidebar__nav">
+          <NavLink
+            to="/inbox"
+            className={({ isActive }) =>
+              'sidebar__nav-item' + (isActive ? ' active' : '')
+            }
+          >
+            <InboxIcon />
+            <span>Inbox</span>
+            {pendingCount > 0 && (
+              <span className="sidebar__badge">{pendingCount}</span>
+            )}
+          </NavLink>
+
+          <NavLink
+            to="/cerebro"
+            className={({ isActive }) =>
+              'sidebar__nav-item' + (isActive ? ' active' : '')
+            }
+          >
+            <BrainIcon />
+            <span>Cerebro</span>
+          </NavLink>
         </nav>
-      </header>
-      <main>{children}</main>
+
+        {/* Footer nav */}
+        <div className="sidebar__footer">
+          <NavLink
+            to="/configuracion"
+            className={({ isActive }) =>
+              'sidebar__nav-item' + (isActive ? ' active' : '')
+            }
+          >
+            <SettingsIcon />
+            <span>Configuración</span>
+          </NavLink>
+
+          <NavLink
+            to="/perfil"
+            className={({ isActive }) =>
+              'sidebar__nav-item' + (isActive ? ' active' : '')
+            }
+          >
+            <UserIcon />
+            <span>Perfil</span>
+          </NavLink>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="main-content">
+        {children}
+      </main>
     </div>
   );
 }

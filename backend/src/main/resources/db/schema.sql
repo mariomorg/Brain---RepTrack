@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS notes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     title           VARCHAR(255) NOT NULL,
-    path            VARCHAR(512) NOT NULL,
+    path            VARCHAR(512),
     type            VARCHAR(64),
     summary         TEXT,
 

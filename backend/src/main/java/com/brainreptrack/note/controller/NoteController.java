@@ -60,4 +60,14 @@ public class NoteController {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
+
+    @GetMapping("/tags")
+    public ResponseEntity<ApiResponse<List<String>>> getAllTags() {
+        return ResponseEntity.ok(ApiResponse.ok(service.getAllTags()));
+    }
+
+    @GetMapping("/tag/{tagName}")
+    public ResponseEntity<ApiResponse<List<NoteResponseDto>>> findByTag(@PathVariable String tagName) {
+        return ResponseEntity.ok(ApiResponse.ok(service.findByTag(tagName)));
+    }
 }

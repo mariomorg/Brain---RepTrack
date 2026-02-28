@@ -72,11 +72,16 @@ public class NoteServiceImpl implements NoteService {
     @Override
     public NoteResponseDto update(UUID id, NoteRequestDto dto) {
         Note note = findOrThrow(id);
-        if (dto.getTitle() != null)   note.setTitle(dto.getTitle());
-        if (dto.getPath() != null)    note.setPath(dto.getPath());
-        if (dto.getType() != null)    note.setType(dto.getType());
-        if (dto.getSummary() != null) note.setSummary(dto.getSummary());
-        if (dto.getTags() != null)    note.setTags(dto.getTags());
+        if (dto.getTitle() != null)
+            note.setTitle(dto.getTitle());
+        if (dto.getPath() != null)
+            note.setPath(dto.getPath());
+        if (dto.getType() != null)
+            note.setType(dto.getType());
+        if (dto.getSummary() != null)
+            note.setSummary(dto.getSummary());
+        if (dto.getTags() != null)
+            note.setTags(dto.getTags());
         if (dto.getInboxItemId() != null) {
             InboxItem item = inboxItemRepository.findById(dto.getInboxItemId())
                     .orElseThrow(() -> new ResourceNotFoundException("InboxItem", dto.getInboxItemId()));
@@ -89,6 +94,18 @@ public class NoteServiceImpl implements NoteService {
     public void delete(UUID id) {
         findOrThrow(id);
         noteRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<NoteResponseDto> findByTag(String tagName) {
+        return noteRepository.findByTagName(tagName).stream().map(this::toDto).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getAllTags() {
+        return noteRepository.findAllDistinctTags();
     }
 
     // -------------------------------------------------------

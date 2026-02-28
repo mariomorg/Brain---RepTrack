@@ -21,4 +21,8 @@ public interface NoteService {
     NoteResponseDto update(UUID id, NoteRequestDto dto);
 
     void delete(UUID id);
+
+    List<NoteResponseDto> findByTag(String tagName);
+
+    List<String> getAllTags();
 }
