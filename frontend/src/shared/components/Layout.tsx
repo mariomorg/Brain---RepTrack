@@ -1,6 +1,7 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { inboxService } from '@features/inbox/services/inboxService';
+import { useAuth } from '../../features/auth/AuthContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,6 +54,8 @@ const UserIcon = () => (
 
 function Layout({ children }: Readonly<LayoutProps>) {
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     inboxService.countPending()
@@ -60,16 +63,24 @@ function Layout({ children }: Readonly<LayoutProps>) {
       .catch(() => setPendingCount(0));
   }, []);
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const initial = user?.displayName?.charAt(0)?.toUpperCase() || user?.username?.charAt(0)?.toUpperCase() || 'U';
+  const displayName = user?.displayName || user?.username || 'Usuario';
+
   return (
     <div className="app-layout">
       {/* Sidebar */}
       <aside className="sidebar">
         {/* Brand */}
         <div className="sidebar__brand">
-          <div className="sidebar__avatar">U</div>
+          <div className="sidebar__avatar">{initial}</div>
           <div className="sidebar__brand-text">
-            <span className="sidebar__brand-name">Unified</span>
-            <span className="sidebar__brand-sub">Inbox Digital</span>
+            <span className="sidebar__brand-name">{displayName}</span>
+            <span className="sidebar__brand-sub">Cerebro Digital</span>
           </div>
         </div>
 
@@ -130,6 +141,18 @@ function Layout({ children }: Readonly<LayoutProps>) {
             <UserIcon />
             <span>Perfil</span>
           </NavLink>
+
+          {user && (
+            <button className="sidebar__nav-item sidebar__logout-btn" onClick={handleLogout}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+              <span>Cerrar sesión</span>
+            </button>
+          )}
         </div>
       </aside>
 
