@@ -30,14 +30,8 @@ public class AppConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
-                // Merge configured origins + chrome-extension pattern
-                String[] allPatterns = new String[allowedOrigins.length + 1];
-                System.arraycopy(allowedOrigins, 0, allPatterns, 0, allowedOrigins.length);
-                allPatterns[allowedOrigins.length] = "chrome-extension://*";
-
                 registry.addMapping("/api/**")
-                        .allowedOriginPatterns(allPatterns)
-                        .allowedOrigins(allowedOrigins)
+                        .allowedOriginPatterns("*")
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true);

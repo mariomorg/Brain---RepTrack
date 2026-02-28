@@ -12,6 +12,8 @@ import PerfilPage from './pages/PerfilPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
+import PWAUpdatePrompt from './shared/components/PWAUpdatePrompt';
+import ShareTargetPage from './pages/ShareTargetPage';
 
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
@@ -47,14 +49,14 @@ const MapPage: React.FC = () => {
   const canvasWidth = Math.max(300, width - 240);
   const canvasHeight = Math.max(300, height);
 
-  const [camera, setCamera]         = React.useState({ x: 0, y: 0, zoom: 0.08 });
-  const initialZoom                 = React.useRef(0.08);
+  const [camera, setCamera] = React.useState({ x: 0, y: 0, zoom: 0.08 });
+  const initialZoom = React.useRef(0.08);
   const [resetViewSignal, setResetViewSignal] = React.useState(0);
   const [focusTagPath, setFocusTagPath] = React.useState<string | null>(null);
   const [selectedTag, setSelectedTag] = React.useState<TagNode | null>(null);
   const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
-  const [popupIdea, setPopupIdea]       = React.useState<Idea | null>(null);
-  const [visibleTags, setVisibleTags]   = React.useState<TagNode[]>([]);
+  const [popupIdea, setPopupIdea] = React.useState<Idea | null>(null);
+  const [visibleTags, setVisibleTags] = React.useState<TagNode[]>([]);
   const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
 
   // Cargar datos del mapa
@@ -263,7 +265,7 @@ function HomeRedesigned() {
     }
   };
 
-  const handleSuggestion = () => {};
+  const handleSuggestion = () => { };
 
   const pendientesContent = loading ? (
     <div className="inbox-empty">Cargando…</div>
@@ -349,6 +351,7 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/login" element={user ? <Navigate to="/inbox" replace /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/inbox" replace /> : <RegisterPage />} />
+      <Route path="/share-target" element={<ShareTargetPage />} />
 
       {/* Protected routes — wrapped in Layout */}
       <Route path="/" element={<ProtectedRoute><Layout><HomeRedesigned /></Layout></ProtectedRoute>} />
@@ -368,6 +371,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <PWAUpdatePrompt />
       </AuthProvider>
     </BrowserRouter>
   );
