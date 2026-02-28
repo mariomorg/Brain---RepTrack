@@ -916,10 +916,52 @@ body {
 .inbox-sidebar {
     width: 300px;
     min-width: 280px;
+    height: 100vh;
     border-left: 1px solid var(--color-border);
     padding: 24px 20px;
-    overflow-y: auto;
+    overflow: hidden;
     background: var(--color-surface);
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.inbox-sidebar::before,
+.inbox-sidebar::after {
+    content: '';
+    position: sticky;
+    left: 0;
+    right: 0;
+    height: 40px;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.3s;
+}
+
+.inbox-sidebar::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--color-surface) 0%, transparent 100%);
+}
+
+.inbox-sidebar::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--color-surface) 0%, transparent 100%);
+    margin-top: -40px;
+}
+
+/* Ocultar scrollbar para un aspecto más limpio */
+.inbox-sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.inbox-sidebar::-webkit-scrollbar-thumb {
+    background: transparent;
+    transition: background 0.2s;
+}
+
+.inbox-sidebar:hover::-webkit-scrollbar-thumb {
+    background: var(--color-border);
 }
 
 /* Capture box */
@@ -1096,12 +1138,45 @@ body {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);
     padding: 12px;
-    margin-bottom: 10px;
-    transition: border-color 0.15s;
+    margin-bottom: 0;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.5s ease, box-shadow 0.5s ease, background 0.5s ease;
+}
+
+.brain-mini-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-md);
+    background: rgba(124, 58, 237, 0.04);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+
+.brain-mini-card:hover::before {
+    opacity: 1;
 }
 
 .brain-mini-card:hover {
-    border-color: #D1D5DB;
+    border-color: #C4B5FD;
+}
+
+/* Tarjeta principal del carrusel */
+.carousel-card--pos0 .brain-mini-card {
+    border-color: #C4B5FD;
+    background: var(--color-surface);
+    box-shadow: 0 2px 12px rgba(124, 58, 237, 0.10);
+}
+
+/* Tarjetas secundarias */
+.carousel-card--pos1 .brain-mini-card,
+.carousel-card--pos2 .brain-mini-card {
+    border-color: var(--color-border);
+    box-shadow: none;
+    background: var(--color-bg);
 }
 
 .brain-mini-card__type {
