@@ -4,8 +4,8 @@ export async function getTagsByLevel(maxLevel: number): Promise<TagNode[]> {
   return TAGS.filter(tag => tag.level <= maxLevel);
 }
 
-export async function getIdeasVisible(zoom: number, focusPath: string | null): Promise<Idea[]> {
-  if (zoom < 2.6) return [];
+export async function getIdeasVisible(_zoom: number, focusPath: string | null): Promise<Idea[]> {
+  // El canvas gestiona la visibilidad según zoom; aquí devolvemos todas (o filtradas por foco)
   let ideas = IDEAS;
   if (focusPath) {
     ideas = ideas.filter(idea => idea.tagPaths.some(tp => tp.startsWith(focusPath)));

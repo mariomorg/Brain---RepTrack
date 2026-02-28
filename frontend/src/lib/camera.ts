@@ -22,7 +22,7 @@ export function screenToWorld(camera: Camera, sx: number, sy: number, width: num
 export function applyZoomAtPoint(camera: Camera, zoomFactor: number, screenX: number, screenY: number, width: number, height: number): Camera {
   // Zoom centrado en el cursor
   const before = screenToWorld(camera, screenX, screenY, width, height);
-  const newZoom = Math.max(0.5, Math.min(4, camera.zoom * zoomFactor));
+  const newZoom = Math.max(0.08, Math.min(20, camera.zoom * zoomFactor));
   const after = screenToWorld({ ...camera, zoom: newZoom }, screenX, screenY, width, height);
   return {
     x: camera.x + (before.x - after.x),

@@ -10,7 +10,6 @@ import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
 import { TagNode, Idea } from './mockData';
 import { getTagsByLevel, getIdeasVisible, getTagByPath } from './mockApi';
-import { getMaxLevelForZoom } from './lib/lod';
 import { buildBreadcrumbs } from './lib/breadcrumbs';
 
 const INITIAL_CAMERA = { x: 0, y: 0, zoom: 0.8 };
@@ -37,12 +36,13 @@ const MapPage: React.FC = () => {
   const canvasHeight = Math.max(300, height - 56);
 
   React.useEffect(() => {
-    getTagsByLevel(getMaxLevelForZoom(camera.zoom)).then(setVisibleTags);
-  }, [camera.zoom]);
+    // MapCanvas gestiona el LOD internamente: siempre pasamos todos los tags
+    getTagsByLevel(2).then(setVisibleTags);
+  }, []);
 
   React.useEffect(() => {
     getIdeasVisible(camera.zoom, focusTagPath).then(setVisibleIdeas);
-  }, [camera.zoom, focusTagPath]);
+  }, [focusTagPath]);
 
   const handleSelectTag = (tag: TagNode) => {
     setSelectedTag(tag);
