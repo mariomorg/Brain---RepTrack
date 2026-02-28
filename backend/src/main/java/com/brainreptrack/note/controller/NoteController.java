@@ -1,5 +1,6 @@
 package com.brainreptrack.note.controller;
 
+import com.brainreptrack.note.dto.FolderSummaryRequestDto;
 import com.brainreptrack.note.dto.NoteRequestDto;
 import com.brainreptrack.note.dto.NoteResponseDto;
 import com.brainreptrack.note.repository.NoteRepository;
@@ -82,6 +83,17 @@ public class NoteController {
     @GetMapping("/{id}/similares")
     public ResponseEntity<ApiResponse<List<NoteResponseDto>>> findSimilares(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.ok(service.findSimilares(id)));
+    }
+
+    /**
+     * Generates an AI summary for all notes inside a leaf folder.
+     * Accepts the folder name/path and the list of note IDs.
+     * Returns a free-text paragraph summarising the folder's contents.
+     */
+    @PostMapping("/folder-summary")
+    public ResponseEntity<ApiResponse<String>> folderSummary(
+            @RequestBody FolderSummaryRequestDto dto) {
+        return ResponseEntity.ok(ApiResponse.ok(service.generateFolderSummary(dto)));
     }
 
     /**
