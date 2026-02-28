@@ -1360,9 +1360,6 @@ export default function InboxPage() {
                                 <SendIcon />
                             </button>
                         </div>
-                        <div className="capture-box__hint">
-                            Enter para guardar&nbsp;•&nbsp;Texto, enlaces, código, vídeos, ideas&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar
-                        </div>
                     </section>
 
                     <div className="pending-section__header">
@@ -1382,7 +1379,6 @@ export default function InboxPage() {
                             );
                         }
                         const awaitingItems = pendingItems.filter(i => i.status === 'AWAITING_APPROVAL');
-                        const processingItems = pendingItems.filter(i => i.status !== 'AWAITING_APPROVAL');
                         return (
                             <>
                                 {/* ── Items awaiting user action — "Procesar" button ── */}
@@ -1407,53 +1403,6 @@ export default function InboxPage() {
                                         </div>
                                         </div>
                                     </>
-                                )}
-
-                                {/* ── Items being processed by AI ── */}
-                                
-
-                                {processingItems.length > 0 && (
-                                    <>
-                                    <div className="ai-proposal-box__header">
-                                        {awaitingItems.length > 0 && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                                                Procesando
-                                            </div>
-                                        )}
-                                        <div className="inbox-items-list">
-                                            {processingItems.map(item => (
-                                                <div key={item.id} className="inbox-item-card">
-                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                                                        <div style={{ flex: 1 }}>
-                                                            <div className="inbox-item__type-badge">
-                                                                <ExtIcon />
-                                                                {typeLabelForItem(item)}
-                                                            </div>
-                                                            <div className="inbox-item__text">{displayText(item)}</div>
-                                                            {isUrl(item.rawText.trim()) && (
-                                                                <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
-                                                                    {item.rawText.trim()}
-                                                                </a>
-                                                            )}
-                                                            <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
-                                                        </div>
-                                                        <div style={{ display: 'flex', gap: 4 }}>
-                                                            <button
-                                                                className="capture-toolbar-btn"
-                                                                title="Eliminar"
-                                                                onClick={() => remove(item.id)}
-                                                                style={{ color: '#EF4444' }}
-                                                            >
-                                                                <TrashIcon />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        </div>
-                                    </>
-                                    
                                 )}
 
                                 {/* ── Recently processed (no approve/reject) ── */}

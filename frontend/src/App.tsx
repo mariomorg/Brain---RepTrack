@@ -16,6 +16,7 @@ import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
 import { IdeaPopup } from './components/IdeaPopup';
+import ProcessingNotification from './components/ProcessingNotification';
 import { TagNode, Idea, ROOT_COLORS } from './mockData';
 import { fetchMapData } from './features/map/services/mapService';
 
@@ -227,9 +228,11 @@ function HomeRedesigned() {
   const [processingIds, setProcessingIds] = React.useState<Set<string>>(new Set());
   const [markdownCreatingIds, setMarkdownCreatingIds] = React.useState<Set<string>>(new Set());
   const [processResults, setProcessResults] = React.useState<Record<string, any>>({});
+  const [showProcessingNotification, setShowProcessingNotification] = React.useState(false);
 
   const handleProcesar = async (id: string) => {
     setProcessingIds((prev) => new Set(prev).add(id));
+    setShowProcessingNotification(true);
     try {
       const result = await procesar(id);
       setProcessResults((prev) => ({ ...prev, [id]: result }));
@@ -239,6 +242,7 @@ function HomeRedesigned() {
         next.delete(id);
         return next;
       });
+      setTimeout(() => setShowProcessingNotification(false), 2000);
     }
   };
 
@@ -265,45 +269,55 @@ function HomeRedesigned() {
 
   const handleSuggestion = () => {};
 
-  const pendientesContent = loading ? (
-    <div className="inbox-empty">Cargando…</div>
-  ) : pendingItems.length === 0 ? (
-    <div className="inbox-empty">No hay elementos pendientes.</div>
-  ) : (
-    <div className="inbox-list">
-      {pendingItems.map((item) => (
-        <PendingApprovalCard
-          key={item.id}
-          item={item}
-          onProcesar={() => handleProcesar(item.id)}
-          onReprocess={() => handleReprocess(item.id)}
-          onRemove={() => handleRemove(item.id)}
-          processing={processingIds.has(item.id)}
-        />
-      ))}
-    </div>
-  );
+  let pendientesContent;
+  if (loading) {
+    pendientesContent = <div className="inbox-empty">Cargando…</div>;
+  } else if (pendingItems.length === 0) {
+    pendientesContent = <div className="inbox-empty">No hay elementos pendientes.</div>;
+  } else {
+    // Solo mostrar los que están en AWAITING_APPROVAL
+    const awaitingApproval = pendingItems.filter(item => item.status === 'AWAITING_APPROVAL');
+    pendientesContent = awaitingApproval.length === 0 ? (
+      <div className="inbox-empty">No hay elementos pendientes.</div>
+    ) : (
+      <div className="inbox-list">
+        {awaitingApproval.map((item) => (
+          <PendingApprovalCard
+            key={item.id}
+            item={item}
+            onProcesar={() => handleProcesar(item.id)}
+            onReprocess={() => handleReprocess(item.id)}
+            onRemove={() => handleRemove(item.id)}
+            processing={processingIds.has(item.id)}
+          />
+        ))}
+      </div>
+    );
+  }
 
-  const procesadosContent = loading ? (
-    <div className="inbox-empty">Cargando…</div>
-  ) : processedItems.length === 0 ? (
-    <div className="inbox-empty">No hay elementos procesados.</div>
-  ) : (
-    <div className="inbox-list">
-      {processedItems.map((item) => (
-        <ProcessedCard
-          key={item.id}
-          item={item}
-          suggestions={processResults[item.id]?.suggestions ?? []}
-          onReprocess={() => handleReprocess(item.id)}
-          onCreateMarkdown={() => handleCreateMarkdown(item.id)}
-          onRemove={() => handleRemove(item.id)}
-          onSuggestion={handleSuggestion}
-          creatingMarkdown={markdownCreatingIds.has(item.id)}
-        />
-      ))}
-    </div>
-  );
+  let procesadosContent;
+  if (loading || processingIds.size > 0) {
+    procesadosContent = <div className="inbox-empty">{loading ? 'Cargando…' : 'Procesando…'}</div>;
+  } else if (processedItems.length === 0) {
+    procesadosContent = <div className="inbox-empty">No hay elementos procesados.</div>;
+  } else {
+    procesadosContent = (
+      <div className="inbox-list">
+        {processedItems.map((item) => (
+          <ProcessedCard
+            key={item.id}
+            item={item}
+            suggestions={processResults[item.id]?.suggestions ?? []}
+            onReprocess={() => handleReprocess(item.id)}
+            onCreateMarkdown={() => handleCreateMarkdown(item.id)}
+            onRemove={() => handleRemove(item.id)}
+            onSuggestion={handleSuggestion}
+            creatingMarkdown={markdownCreatingIds.has(item.id)}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="inbox-page">
@@ -327,6 +341,7 @@ function HomeRedesigned() {
           {procesadosContent}
         </section>
       </div>
+      <ProcessingNotification open={showProcessingNotification} onClose={() => setShowProcessingNotification(false)} />
     </div>
   );
 }

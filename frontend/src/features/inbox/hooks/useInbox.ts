@@ -41,14 +41,7 @@ export function useInbox() {
         loadPending();
     }, [loadPending]);
 
-    useEffect(() => {
-        const hasActiveItems = pendingItems.some(
-            item => item.status === 'PENDING' || item.status === 'PROCESSING'
-        );
-        if (!hasActiveItems) return;
-        const id = setInterval(loadPending, POLL_INTERVAL_MS);
-        return () => clearInterval(id);
-    }, [pendingItems, loadPending]);
+    // Polling removed: only load inbox on mount or after actions
 
     /**
      * Unified capture — uses the new /capture endpoint with auto-detection.
