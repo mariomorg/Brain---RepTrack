@@ -220,7 +220,9 @@ function BrainMiniCard({ note }: Readonly<{ note: Note }>) {
             {note.summary && <div className="brain-mini-card__summary">{note.summary}</div>}
             {note.tags && note.tags.length > 0 && (
                 <div className="brain-mini-card__tags">
-                    {note.tags.slice(0, 3).map((t) => <TagChip key={t.name} tag={t.name} />)}
+                    {note.tags
+                        .slice(0, 3)
+                        .map((t) => <TagChip key={t.name} tag={t.name} />)}
                 </div>
             )}
         </div>

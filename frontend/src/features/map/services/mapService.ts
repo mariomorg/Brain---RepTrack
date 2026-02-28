@@ -278,12 +278,18 @@ export async function fetchMapData(): Promise<MapData> {
       ? note.createdAt.slice(0, 10)
       : String(note.createdAt);
 
+    // Solo los tags hoja (no prefijo de otro tag de la misma nota)
+    const rawTagNames = noteTags.map(t => t.name);
+    const leafTagNames = rawTagNames.filter(
+      name => !rawTagNames.some(other => other !== name && other.startsWith(name + '/'))
+    );
+
     return {
       id:        note.id,
       title:     note.title,
       excerpt:   note.summary ?? '',
       createdAt,
-      tagPaths:  noteTags.map(t => t.name),
+      tagPaths:  leafTagNames,
       x:         pos.x,
       y:         pos.y,
     };
