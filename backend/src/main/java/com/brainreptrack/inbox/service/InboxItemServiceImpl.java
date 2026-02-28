@@ -6,6 +6,7 @@ import com.brainreptrack.inbox.dto.CaptureRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
+import com.brainreptrack.inbox.client.TranscriptionClient;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
@@ -32,6 +33,7 @@ public class InboxItemServiceImpl implements InboxItemService {
     private final InboxItemRepository repository;
     private final AiProcessingService aiProcessingService;
     private final ContentTypeDetector contentTypeDetector;
+    private final TranscriptionClient transcriptionClient;
     private final ObjectMapper objectMapper;
 
     // -------------------------------------------------------
@@ -65,6 +67,19 @@ public class InboxItemServiceImpl implements InboxItemService {
         String rawText = dto.getContent();
         if (dto.getTitle() != null && !dto.getTitle().isBlank()) {
             rawText = dto.getTitle().trim() + "\n" + rawText;
+        }
+
+        // 4b. VIDEO_REF: fetch video title so it displays nicely instead of raw URL
+        if (detected == ContentType.VIDEO_REF && sourceUrl != null) {
+            try {
+                String videoTitle = transcriptionClient.getVideoTitle(sourceUrl);
+                if (videoTitle != null && !videoTitle.equals(sourceUrl)) {
+                    rawText = videoTitle + "\n" + rawText;
+                    log.info("[Capture] Video title fetched: '{}'", videoTitle);
+                }
+            } catch (Exception e) {
+                log.warn("[Capture] Could not fetch video title: {}", e.getMessage());
+            }
         }
 
         // 5. Build and save the entity

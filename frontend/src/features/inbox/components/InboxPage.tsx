@@ -123,9 +123,9 @@ function isUrl(text: string): boolean {
     try { new URL(text); return true; } catch { return false; }
 }
 
-/** For FILE items, show only the first line (filename) instead of the full extracted text. */
+/** For FILE and VIDEO_REF items, show only the first line (filename/title) instead of the full text. */
 function displayText(item: InboxItem): string {
-    if (item.detectedType === 'FILE' && item.rawText) {
+    if ((item.detectedType === 'FILE' || item.detectedType === 'VIDEO_REF') && item.rawText) {
         const firstLine = item.rawText.split('\n')[0].trim();
         return firstLine || item.rawText;
     }

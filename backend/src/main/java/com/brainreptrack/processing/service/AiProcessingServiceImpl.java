@@ -1,5 +1,6 @@
 package com.brainreptrack.processing.service;
 
+import com.brainreptrack.inbox.client.TranscriptionClient;
 import com.brainreptrack.inbox.domain.ContentType;
 import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
@@ -45,6 +46,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     private final ObjectMapper objectMapper;
     private final SuggestionAnalyzer suggestionAnalyzer;
     private final SummaryGenerationService summaryGenerationService;
+    private final TranscriptionClient transcriptionClient;
     private final Path markdownOutputDir;
 
     public AiProcessingServiceImpl(
@@ -55,6 +57,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             ObjectMapper objectMapper,
             SuggestionAnalyzer suggestionAnalyzer,
             SummaryGenerationService summaryGenerationService,
+            TranscriptionClient transcriptionClient,
             @Value("${markdown.output-dir:./markdown-notes}") String markdownOutputDirStr) {
         this.inboxItemRepository = inboxItemRepository;
         this.noteRepository = noteRepository;
@@ -63,6 +66,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         this.objectMapper = objectMapper;
         this.suggestionAnalyzer = suggestionAnalyzer;
         this.summaryGenerationService = summaryGenerationService;
+        this.transcriptionClient = transcriptionClient;
         this.markdownOutputDir = Paths.get(markdownOutputDirStr);
         try {
             Files.createDirectories(this.markdownOutputDir);
@@ -113,6 +117,33 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         inboxItemRepository.save(item);
 
         try {
+            // ── 1b. VIDEO_REF: download audio, transcribe, enrich rawText ────
+            if ("VIDEO_REF".equals(item.getDetectedType()) && item.getSourceUrl() != null) {
+                try {
+                    log.info("[AI] VIDEO_REF detected — transcribing video: {}", item.getSourceUrl());
+                    TranscriptionClient.VideoTranscriptionResponse videoResult = transcriptionClient
+                            .transcribeVideo(item.getSourceUrl());
+
+                    // Store: first line = video title, rest = transcript
+                    String videoTitle = videoResult.getTitle() != null
+                            ? videoResult.getTitle()
+                            : item.getSourceUrl();
+                    String transcript = videoResult.getTranscript() != null
+                            ? videoResult.getTranscript()
+                            : "";
+
+                    item.setRawText(videoTitle + "\n" + transcript);
+                    inboxItemRepository.save(item);
+
+                    log.info("[AI] Video transcribed successfully: '{}' ({} chars transcript)",
+                            videoTitle, transcript.length());
+                } catch (Exception videoEx) {
+                    log.warn("[AI] Video transcription failed for {}: {}. Processing with URL only.",
+                            inboxItemId, videoEx.getMessage());
+                    // Non-fatal — processing continues with the original URL text
+                }
+            }
+
             // ── 2. Load existing tag tree ───────────────────────────────────
             List<Tag> allTags = tagRepository.findAll();
 
@@ -542,7 +573,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             case CODE ->
                 "\n[CONTENT TYPE: Code snippet. Classify by the technology, language, or domain the code belongs to.]\n";
             case VIDEO_REF ->
-                "\n[CONTENT TYPE: Video reference. Classify by the subject matter of the video, not the platform.]\n";
+                "\n[CONTENT TYPE: Video transcription. The first line is the video title, followed by the audio transcript. Classify by the subject matter of the video content.]\n";
             case ARTICLE_REF ->
                 "\n[CONTENT TYPE: Article/paper reference. Classify by the article's topic and field.]\n";
             case FILE -> "\n[CONTENT TYPE: File attachment. Classify based on the file description or name.]\n";
