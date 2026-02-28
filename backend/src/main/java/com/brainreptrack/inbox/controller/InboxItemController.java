@@ -10,15 +10,22 @@ import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/inbox")
 @RequiredArgsConstructor
@@ -29,6 +36,9 @@ public class InboxItemController {
     private final TranscriptionClient transcriptionClient;
 
     private final FileTextExtractor fileTextExtractor;
+
+    @Value("${uploads.dir:./uploads}")
+    private String uploadsDirStr;
 
     // =====================================================================
     // UNIFIED CAPTURE — single entry point for any content type
@@ -94,10 +104,23 @@ public class InboxItemController {
                     .body(ApiResponse.error("El archivo está vacío"));
         }
 
-        // Extract text content from the file
+        // 1. Save original file to disk
+        String savedFilePath = null;
+        try {
+            Path uploadsDir = Paths.get(uploadsDirStr).toAbsolutePath();
+            Files.createDirectories(uploadsDir);
+            String uniqueName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            Path dest = uploadsDir.resolve(uniqueName);
+            Files.copy(file.getInputStream(), dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            savedFilePath = dest.toAbsolutePath().toString();
+        } catch (IOException e) {
+            log.error("[captureFile] Could not save file to disk: {}", e.getMessage(), e);
+        }
+
+        // 2. Extract text content from the file
         String extractedText = fileTextExtractor.extractText(file);
 
-        // Combine: user text + extracted content
+        // 3. Combine: user text + extracted content
         String content;
         if (additionalText != null && !additionalText.isBlank()) {
             content = additionalText.trim() + "\n\n--- Contenido del archivo: "
@@ -110,6 +133,7 @@ public class InboxItemController {
                 .content(content)
                 .contentType("FILE")
                 .title(file.getOriginalFilename())
+                .filePath(savedFilePath)
                 .build();
 
         return ResponseEntity.status(HttpStatus.CREATED)

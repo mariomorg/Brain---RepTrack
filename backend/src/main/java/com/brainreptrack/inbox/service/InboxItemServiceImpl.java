@@ -88,6 +88,7 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .detectedType(detected.name())
                 .sourceUrl(sourceUrl)
                 .metadata(metadataJson)
+                .filePath(dto.getFilePath())
                 .status("PENDING")
                 .build();
         InboxItem saved = repository.save(entity);

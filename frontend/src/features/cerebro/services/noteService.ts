@@ -67,4 +67,13 @@ export const noteService = {
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`${BASE}/${id}`);
   },
+
+  /** Relanza la IA sobre el inbox item asociado y devuelve la nota actualizada */
+  reinterpret: async (noteId: string, inboxItemId: string): Promise<Note> => {
+    // 1. Re-procesa el inbox item con la IA
+    await apiClient.post(`/inbox/${inboxItemId}/process`);
+    // 2. Recarga la nota (ai_summary ya actualizado)
+    const res = await apiClient.get<ApiResponse<Note>>(`${BASE}/${noteId}`);
+    return res.data.data;
+  },
 };

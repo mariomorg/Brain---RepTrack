@@ -6,6 +6,8 @@ backend/.mvn/wrapper/maven-wrapper.jar
 # Backend - secrets
 backend/src/main/resources/application.properties
 
+backend/uploads/
+
 # Frontend - Node
 frontend/node_modules/
 frontend/dist/

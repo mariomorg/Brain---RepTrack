@@ -15,6 +15,7 @@ export type Idea = {
   id: string;
   title: string;
   excerpt: string;
+  aiSummary?: string | null;
   createdAt: string;
   tagPaths: string[];
   x: number;

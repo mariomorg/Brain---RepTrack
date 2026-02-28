@@ -31,4 +31,10 @@ public class NoteRequestDto {
      * note_tags(note_id, tag_name, confidence_level).
      */
     private Set<NoteTagDto> tags;
+
+    /**
+     * Editable AI summary (markdown). When present, overwrites the ai_summary
+     * stored in the linked InboxItem.
+     */
+    private String aiSummary;
 }

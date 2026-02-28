@@ -115,6 +115,12 @@ public class NoteServiceImpl implements NoteService {
             note.setInboxItem(item);
         }
 
+        // Allow direct editing of ai_summary via the linked InboxItem
+        if (dto.getAiSummary() != null && note.getInboxItem() != null) {
+            note.getInboxItem().setAiSummary(dto.getAiSummary());
+            inboxItemRepository.save(note.getInboxItem());
+        }
+
         return toDto(noteRepository.save(note));
     }
 
@@ -221,6 +227,7 @@ public class NoteServiceImpl implements NoteService {
         String aiSummary = null;
         String detectedType = null;
         String sourceUrl = null;
+        String fileContent = null;
         if (n.getInboxItem() != null) {
             detectedType = n.getInboxItem().getDetectedType();
             aiSummary = n.getInboxItem().getAiSummary();
@@ -232,6 +239,10 @@ public class NoteServiceImpl implements NoteService {
                     && raw != null) {
                 int lineEnd = raw.indexOf('\n');
                 originalContent = lineEnd > 0 ? raw.substring(0, lineEnd).trim() : raw.trim();
+                // Para archivos, exponer el contenido completo extraído
+                if ("FILE".equalsIgnoreCase(detectedType) && lineEnd > 0) {
+                    fileContent = raw.substring(lineEnd + 1).trim();
+                }
             } else {
                 originalContent = raw;
             }
@@ -251,6 +262,12 @@ public class NoteServiceImpl implements NoteService {
                 .aiSummary(aiSummary)
                 .detectedType(detectedType)
                 .sourceUrl(sourceUrl)
+                .fileContent(fileContent)
+                .fileUrl("FILE".equalsIgnoreCase(detectedType)
+                        && n.getInboxItem() != null
+                        && n.getInboxItem().getFilePath() != null
+                        ? "/api/notes/" + n.getId() + "/file"
+                        : null)
                 .build();
     }
 }

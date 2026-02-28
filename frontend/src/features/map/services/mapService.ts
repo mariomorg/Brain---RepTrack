@@ -288,6 +288,7 @@ export async function fetchMapData(): Promise<MapData> {
       id:        note.id,
       title:     note.title,
       excerpt:   note.summary ?? '',
+      aiSummary: note.aiSummary ?? null,
       createdAt,
       tagPaths:  leafTagNames,
       x:         pos.x,

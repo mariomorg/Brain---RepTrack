@@ -33,4 +33,18 @@ public class NoteResponseDto {
 
     /** URL de origen del recurso (para videos, enlaces, etc.). */
     private String sourceUrl;
+
+    /**
+     * Contenido completo extraído del archivo (solo para detectedType=FILE).
+     * Mientras que originalContent contiene solo el nombre del archivo,
+     * fileContent contiene el texto extraído completo del documento.
+     */
+    private String fileContent;
+
+    /**
+     * URL relativa para obtener el archivo original desde el backend.
+     * Solo presente cuando detectedType=FILE y el archivo fue guardado en disco.
+     * Ejemplo: /api/notes/{id}/file
+     */
+    private String fileUrl;
 }

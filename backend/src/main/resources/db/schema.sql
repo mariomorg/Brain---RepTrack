@@ -29,15 +29,13 @@ CREATE TABLE IF NOT EXISTS inbox_items (
     output_path     VARCHAR(512),
 
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
-    processed_at    TIMESTAMP,
-
-    CONSTRAINT status_check
-        CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'))
+    processed_at    TIMESTAMP
 );
--- Update constraint on pre-existing databases (safe no-op if not present)
+-- Recreate constraint idempotently (works on both fresh installs and upgrades)
 ALTER TABLE inbox_items DROP CONSTRAINT IF EXISTS status_check;
 ALTER TABLE inbox_items ADD CONSTRAINT status_check
-    CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'));
+    CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'))
+    NOT VALID;
 
 -- Add unified-capture columns (safe no-op on fresh installs)
 ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS source_url   VARCHAR(2048);
@@ -45,6 +43,9 @@ ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS metadata     TEXT;
 
 -- Extensive AI-generated summary of the topic
 ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS ai_summary   TEXT;
+
+-- Path to the original uploaded file (for FILE-type items)
+ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS file_path    VARCHAR(512);
 
 -- =========================================================
 --  TABLE: notes

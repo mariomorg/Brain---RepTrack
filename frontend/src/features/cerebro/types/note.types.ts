@@ -19,6 +19,10 @@ export interface Note {
     aiSummary: string | null;
     detectedType: string | null;
     sourceUrl: string | null;
+    /** Texto completo extraído del archivo (solo cuando detectedType === 'FILE'). */
+    fileContent: string | null;
+    /** URL relativa para ver/descargar el archivo original (/api/notes/{id}/file). */
+    fileUrl: string | null;
 }
 
 export interface CreateNoteRequest {
@@ -35,6 +39,7 @@ export interface UpdateNoteRequest {
     path?: string;
     type?: string;
     summary?: string;
+    aiSummary?: string;
     inboxItemId?: string;
     tags?: NoteTag[];
 }

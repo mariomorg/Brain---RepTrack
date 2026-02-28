@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Idea } from '../mockData';
 
 interface IdeaPopupProps {
@@ -113,21 +114,30 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
           </button>
         </div>
 
+        {/* Resumen / excerpt — barra destacada bajo el header */}
+        <div style={{
+          margin: '14px 20px 0',
+          padding: '10px 14px',
+          borderRadius: 10,
+          background: `${accentColor}12`,
+          borderLeft: `3px solid ${accentColor}`,
+          flexShrink: 0,
+        }}>
+          <p style={{ margin: 0, fontSize: 13, color: '#c8c8dc', lineHeight: 1.6, fontStyle: 'italic' }}>
+            {idea.excerpt}
+          </p>
+        </div>
+
         {/* Divider */}
         <div style={{
           height: 1,
-          margin: '16px 20px 0',
+          margin: '14px 20px 0',
           background: `linear-gradient(to right, ${accentColor}44, transparent)`,
           flexShrink: 0,
         }} />
 
         {/* Cuerpo */}
-        <div style={{ flex: 1, padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          {/* Excerpt */}
-          <p style={{ margin: 0, fontSize: 13.5, color: '#b8b8cc', lineHeight: 1.65 }}>
-            {idea.excerpt}
-          </p>
+        <div style={{ flex: 1, padding: '16px 20px 36px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Tags */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -151,6 +161,33 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
           <p style={{ margin: 0, fontSize: 11.5, color: '#555' }}>
             {date}
           </p>
+
+          {/* AI Summary (markdown) */}
+          {idea.aiSummary && (
+            <div style={{
+              borderTop: '1px solid rgba(255,255,255,0.07)',
+              paddingTop: 12,
+              fontSize: 12.5,
+              color: '#a0a0b8',
+              lineHeight: 1.7,
+              overflow: 'auto',
+              maxHeight: 520,
+            }}>
+              <ReactMarkdown
+                components={{
+                  h1: ({children}) => <p style={{ margin: '6px 0 2px', fontSize: 13, fontWeight: 700, color: '#d0d0e8' }}>{children}</p>,
+                  h2: ({children}) => <p style={{ margin: '6px 0 2px', fontSize: 12.5, fontWeight: 700, color: '#c8c8e0' }}>{children}</p>,
+                  h3: ({children}) => <p style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, color: '#b8b8d8' }}>{children}</p>,
+                  p:  ({children}) => <p style={{ margin: '4px 0', color: '#a0a0b8' }}>{children}</p>,
+                  strong: ({children}) => <strong style={{ color: '#d8d8f0', fontWeight: 600 }}>{children}</strong>,
+                  ul: ({children}) => <ul style={{ margin: '4px 0', paddingLeft: 16 }}>{children}</ul>,
+                  li: ({children}) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                }}
+              >
+                {idea.aiSummary}
+              </ReactMarkdown>
+            </div>
+          )}
 
           {/* Botón navegar */}
           <button
