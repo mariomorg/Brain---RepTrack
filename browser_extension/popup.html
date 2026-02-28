@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <title>BrainRepTrack Inbox</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div id="inbox-popup-root">
+    <!-- Header -->
+    <div class="header">
+      <span class="logo">🧠</span>
+      <span class="title">Inbox</span>
+      <span class="badge" id="pending-badge" title="Items pendientes"></span>
+    </div>
+
+    <!-- Content textarea -->
+    <div class="field-group">
+      <textarea id="inbox-text" placeholder="Escribe una idea, pega un enlace, código, lo que sea..."></textarea>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="send-btn" class="primary-btn">
+        <span class="btn-text">Enviar al Inbox</span>
+        <span class="btn-loading" style="display:none;">Enviando...</span>
+      </button>
+    </div>
+
+    <!-- Feedback -->
+    <div id="feedback"></div>
+
+
+  </div>
+  <script src="popup.js"></script>
+</body>
+
+</html>
