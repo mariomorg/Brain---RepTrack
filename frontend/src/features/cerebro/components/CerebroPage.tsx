@@ -1,6 +1,6 @@
 import { useCerebro } from '../hooks/useCerebro';
 import { NoteCard } from './NoteCard';
-import { TagFilter } from './TagFilter';
+import { TagTree } from './TagTree';
 
 const SearchIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -9,24 +9,16 @@ const SearchIcon = () => (
     </svg>
 );
 
-const FilterIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round">
-        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-    </svg>
-);
-
 export default function CerebroPage() {
     const {
         filteredNotes,
         notes,
-        tags,
         loading,
         error,
         searchQuery,
         setSearchQuery,
-        activeTag,
-        selectTag,
+        activePathPrefix,
+        selectPathPrefix,
     } = useCerebro();
 
     return (
@@ -37,8 +29,8 @@ export default function CerebroPage() {
                 <p className="page-header__subtitle">Conocimiento estructurado y listo para usar.</p>
             </div>
 
-            {/* Toolbar */}
-            <div className="cerebro-toolbar">
+            {/* Search */}
+            <div className="cerebro-toolbar" style={{ marginBottom: 24 }}>
                 <div className="search-bar">
                     <span className="search-bar__icon"><SearchIcon /></span>
                     <input
@@ -49,45 +41,46 @@ export default function CerebroPage() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-                <button className="icon-btn" title="Filtrar">
-                    <FilterIcon />
-                </button>
             </div>
 
-            {/* Tag filter */}
-            {tags.length > 0 && (
-                <TagFilter
-                    tags={tags}
-                    activeTag={activeTag}
-                    totalCount={notes.length}
-                    onSelect={selectTag}
-                />
-            )}
+            {/* Two-column layout: tree + notes */}
+            <div className="cerebro-layout">
+                {/* Tag tree sidebar */}
+                {notes.length > 0 && (
+                    <TagTree
+                        notes={notes}
+                        activePrefix={activePathPrefix}
+                        onSelect={selectPathPrefix}
+                    />
+                )}
 
-            {/* Content */}
-            {loading ? (
-                <div className="loading-spinner">Cargando cerebro…</div>
-            ) : error ? (
-                <div className="empty-state">
-                    <div className="empty-state__icon">⚠️</div>
-                    <p className="empty-state__text">{error}</p>
+                {/* Notes area */}
+                <div className="cerebro-content">
+                    {loading ? (
+                        <div className="loading-spinner">Cargando cerebro…</div>
+                    ) : error ? (
+                        <div className="empty-state">
+                            <div className="empty-state__icon">⚠️</div>
+                            <p className="empty-state__text">{error}</p>
+                        </div>
+                    ) : filteredNotes.length === 0 ? (
+                        <div className="empty-state">
+                            <div className="empty-state__icon">🧠</div>
+                            <p className="empty-state__text">
+                                {searchQuery || activePathPrefix
+                                    ? 'No se encontraron notas con ese filtro.'
+                                    : 'Sin notas todavía. ¡Empieza capturando ideas desde el Inbox!'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="notes-grid">
+                            {filteredNotes.map((note) => (
+                                <NoteCard key={note.id} note={note} />
+                            ))}
+                        </div>
+                    )}
                 </div>
-            ) : filteredNotes.length === 0 ? (
-                <div className="empty-state">
-                    <div className="empty-state__icon">🧠</div>
-                    <p className="empty-state__text">
-                        {searchQuery || activeTag
-                            ? 'No se encontraron notas con ese filtro.'
-                            : 'Sin notas todavía. ¡Empieza capturando ideas desde el Inbox!'}
-                    </p>
-                </div>
-            ) : (
-                <div className="notes-grid">
-                    {filteredNotes.map((note) => (
-                        <NoteCard key={note.id} note={note} />
-                    ))}
-                </div>
-            )}
+            </div>
         </div>
     );
 }

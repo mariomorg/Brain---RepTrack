@@ -1,4 +1,4 @@
-export type InboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'ARCHIVED';
+export type InboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'AWAITING_APPROVAL' | 'REJECTED' | 'ARCHIVED';
 
 export type InboxDetectedType =
     | 'TEXT'

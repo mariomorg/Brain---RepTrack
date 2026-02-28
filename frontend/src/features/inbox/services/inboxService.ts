@@ -46,4 +46,14 @@ export const inboxService = {
     markProcessed: async (id: string): Promise<InboxItem> => {
         return inboxService.update(id, { status: 'PROCESSED' });
     },
+
+    approve: async (id: string): Promise<InboxItem> => {
+        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/${id}/approve`);
+        return res.data.data;
+    },
+
+    reject: async (id: string): Promise<InboxItem> => {
+        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/${id}/reject`);
+        return res.data.data;
+    },
 };

@@ -21,4 +21,21 @@ public interface InboxItemService {
     void delete(UUID id);
 
     long countPending();
+
+    /**
+     * Triggers synchronous AI processing for the given inbox item.
+     * Sets status PROCESSING → calls AI → stores proposals_json →
+     * AWAITING_APPROVAL.
+     */
+    InboxItemResponseDto process(UUID id);
+
+    /**
+     * User approves the AI result: creates the Note and marks the item PROCESSED.
+     */
+    InboxItemResponseDto approve(UUID id);
+
+    /**
+     * User rejects the AI result: marks the item REJECTED without creating a Note.
+     */
+    InboxItemResponseDto reject(UUID id);
 }

@@ -32,8 +32,12 @@ CREATE TABLE IF NOT EXISTS inbox_items (
     processed_at    TIMESTAMP,
 
     CONSTRAINT status_check
-        CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'ARCHIVED'))
+        CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'))
 );
+-- Update constraint on pre-existing databases (safe no-op if not present)
+ALTER TABLE inbox_items DROP CONSTRAINT IF EXISTS status_check;
+ALTER TABLE inbox_items ADD CONSTRAINT status_check
+    CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'));
 
 -- =========================================================
 --  TABLE: notes
@@ -49,28 +53,60 @@ CREATE TABLE IF NOT EXISTS notes (
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
 
     inbox_item_id   UUID UNIQUE,
-    
+    confidence_score DOUBLE PRECISION,
     CONSTRAINT fk_notes_inbox
         FOREIGN KEY (inbox_item_id)
         REFERENCES inbox_items(id)
         ON DELETE RESTRICT
+);
+-- Add confidence_score if the table already existed without it
+ALTER TABLE notes ADD COLUMN IF NOT EXISTS confidence_score DOUBLE PRECISION;
+
+-- Index to speed-up the high-confidence overlap check in AiProcessingServiceImpl
+CREATE INDEX IF NOT EXISTS idx_notes_path_confidence ON notes (path, confidence_score);
+
+-- =========================================================
+--  TABLE: tags  (global tag registry with parent reference)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS tags (
+    name        VARCHAR(128) PRIMARY KEY,
+    parent_name VARCHAR(128),
+    CONSTRAINT tag_name_not_empty CHECK (trim(name) <> ''),
+    CONSTRAINT fk_tag_parent
+        FOREIGN KEY (parent_name)
+        REFERENCES tags(name)
+        ON DELETE SET NULL
 );
 
 -- =========================================================
 --  TABLE: note_tags
 -- =========================================================
 CREATE TABLE IF NOT EXISTS note_tags (
-    note_id     UUID NOT NULL,
-    tag_name    VARCHAR(128) NOT NULL,
+    note_id          UUID NOT NULL,
+    tag_name         VARCHAR(128) NOT NULL,
+    confidence_level DOUBLE PRECISION,
 
     PRIMARY KEY (note_id, tag_name),
 
     CONSTRAINT fk_note_tags_note
         FOREIGN KEY (note_id)
         REFERENCES notes(id)
-        ON DELETE CASCADE
-);
+        ON DELETE CASCADE,
 
+    CONSTRAINT fk_note_tags_tag
+        FOREIGN KEY (tag_name)
+        REFERENCES tags(name)
+        ON DELETE RESTRICT
+);
+-- Add confidence_level if the table already existed without it
+ALTER TABLE note_tags ADD COLUMN IF NOT EXISTS confidence_level DOUBLE PRECISION;
+-- Backfill any note_tags rows whose tag_name is missing from the tags registry
+-- (can happen on existing DBs created before the FK was added)
+INSERT INTO tags (name, parent_name)
+    SELECT DISTINCT tag_name, NULL
+    FROM note_tags
+    WHERE tag_name NOT IN (SELECT name FROM tags)
+ON CONFLICT (name) DO NOTHING;
 -- =========================================================
 --  TABLE: relations
 -- =========================================================

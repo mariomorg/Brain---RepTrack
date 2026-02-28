@@ -3,15 +3,20 @@ package com.brainreptrack.note.service;
 import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.note.domain.Note;
+import com.brainreptrack.note.domain.NoteTag;
 import com.brainreptrack.note.dto.NoteRequestDto;
 import com.brainreptrack.note.dto.NoteResponseDto;
+import com.brainreptrack.note.dto.NoteTagDto;
 import com.brainreptrack.note.repository.NoteRepository;
+import com.brainreptrack.note.repository.TagRepository;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -22,6 +27,7 @@ public class NoteServiceImpl implements NoteService {
 
     private final NoteRepository noteRepository;
     private final InboxItemRepository inboxItemRepository;
+    private final TagRepository tagRepository;
 
     @Override
     public NoteResponseDto create(NoteRequestDto dto) {
@@ -39,8 +45,11 @@ public class NoteServiceImpl implements NoteService {
 
         Note note = builder.build();
         if (dto.getTags() != null) {
-            note.setTags(dto.getTags());
+            ensureTags(dto.getTags());
+            note.setTags(toNoteTags(dto.getTags()));
         }
+        if (dto.getConfidenceScore() != null)
+            note.setConfidenceScore(dto.getConfidenceScore());
         return toDto(noteRepository.save(note));
     }
 
@@ -80,8 +89,12 @@ public class NoteServiceImpl implements NoteService {
             note.setType(dto.getType());
         if (dto.getSummary() != null)
             note.setSummary(dto.getSummary());
-        if (dto.getTags() != null)
-            note.setTags(dto.getTags());
+        if (dto.getTags() != null) {
+            ensureTags(dto.getTags());
+            note.setTags(toNoteTags(dto.getTags()));
+        }
+        if (dto.getConfidenceScore() != null)
+            note.setConfidenceScore(dto.getConfidenceScore());
         if (dto.getInboxItemId() != null) {
             InboxItem item = inboxItemRepository.findById(dto.getInboxItemId())
                     .orElseThrow(() -> new ResourceNotFoundException("InboxItem", dto.getInboxItemId()));
@@ -110,12 +123,35 @@ public class NoteServiceImpl implements NoteService {
 
     // -------------------------------------------------------
 
+    /**
+     * Ensures all tags in the set exist in the tag registry.
+     * When tags come from arbitrary API input (no path context)
+     * they are inserted with parent_name = null.
+     * The parent will be updated later if the same tag is seen
+     * in a path-aware context (AiProcessingServiceImpl).
+     */
+    private void ensureTags(Set<NoteTagDto> tagDtos) {
+        for (NoteTagDto dto : tagDtos) {
+            tagRepository.upsert(dto.getName(), null);
+        }
+    }
+
+    /** Converts a set of NoteTagDto (from request) into domain NoteTag objects. */
+    private Set<NoteTag> toNoteTags(Set<NoteTagDto> dtos) {
+        return dtos.stream()
+                .map(d -> new NoteTag(d.getName(), d.getConfidenceLevel()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
     private Note findOrThrow(UUID id) {
         return noteRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Note", id));
     }
 
     private NoteResponseDto toDto(Note n) {
+        Set<NoteTagDto> tagDtos = n.getTags().stream()
+                .map(t -> new NoteTagDto(t.getTagName(), t.getConfidenceLevel()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         return NoteResponseDto.builder()
                 .id(n.getId())
                 .title(n.getTitle())
@@ -124,7 +160,8 @@ public class NoteServiceImpl implements NoteService {
                 .summary(n.getSummary())
                 .createdAt(n.getCreatedAt())
                 .inboxItemId(n.getInboxItem() != null ? n.getInboxItem().getId() : null)
-                .tags(n.getTags())
+                .confidenceScore(n.getConfidenceScore())
+                .tags(tagDtos)
                 .build();
     }
 }

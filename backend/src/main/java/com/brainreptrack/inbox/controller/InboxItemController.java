@@ -60,4 +60,31 @@ public class InboxItemController {
     public ResponseEntity<ApiResponse<Long>> countPending() {
         return ResponseEntity.ok(ApiResponse.ok(service.countPending()));
     }
+
+    /**
+     * Manually triggers (re-)processing of an inbox item through the AI.
+     * Useful for retrying failed items or re-analysing existing ones.
+     */
+    @PostMapping("/{id}/process")
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> process(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.process(id)));
+    }
+
+    /**
+     * User approves the AI classification result – creates the Note and marks item
+     * PROCESSED.
+     */
+    @PostMapping("/{id}/approve")
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> approve(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.approve(id)));
+    }
+
+    /**
+     * User rejects the AI classification result – marks item REJECTED without
+     * creating a Note.
+     */
+    @PostMapping("/{id}/reject")
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> reject(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.reject(id)));
+    }
 }

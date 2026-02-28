@@ -1,5 +1,10 @@
 export type NoteType = 'TEXT' | 'LINK' | 'FILE' | 'AUDIO';
 
+export interface NoteTag {
+    name: string;
+    confidenceLevel?: number | null;
+}
+
 export interface Note {
     id: string;
     title: string;
@@ -8,7 +13,8 @@ export interface Note {
     summary: string | null;
     createdAt: string;
     inboxItemId: string | null;
-    tags: string[];
+    confidenceScore: number | null;
+    tags: NoteTag[];
 }
 
 export interface CreateNoteRequest {
@@ -17,7 +23,7 @@ export interface CreateNoteRequest {
     type?: string | null;
     summary?: string | null;
     inboxItemId?: string | null;
-    tags?: string[];
+    tags?: NoteTag[];
 }
 
 export interface UpdateNoteRequest {
@@ -26,5 +32,5 @@ export interface UpdateNoteRequest {
     type?: string;
     summary?: string;
     inboxItemId?: string;
-    tags?: string[];
+    tags?: NoteTag[];
 }

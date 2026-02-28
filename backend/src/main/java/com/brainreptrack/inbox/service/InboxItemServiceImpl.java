@@ -4,10 +4,13 @@ import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
+import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,6 +23,7 @@ import java.util.stream.Collectors;
 public class InboxItemServiceImpl implements InboxItemService {
 
     private final InboxItemRepository repository;
+    private final AiProcessingService aiProcessingService;
 
     @Override
     public InboxItemResponseDto create(InboxItemRequestDto dto) {
@@ -31,6 +35,37 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .finalJson(dto.getFinalJson())
                 .outputPath(dto.getOutputPath())
                 .build();
+        InboxItem saved = repository.save(entity);
+        // Schedule async AI analysis to run AFTER this transaction commits,
+        // so the row is visible to the background thread when it queries the DB.
+        UUID savedId = saved.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                aiProcessingService.processAsync(savedId);
+            }
+        });
+        return toDto(saved);
+    }
+
+    @Override
+    public InboxItemResponseDto process(UUID id) {
+        findOrThrow(id);
+        aiProcessingService.process(id);
+        return toDto(findOrThrow(id));
+    }
+
+    @Override
+    public InboxItemResponseDto approve(UUID id) {
+        findOrThrow(id);
+        aiProcessingService.approve(id);
+        return toDto(findOrThrow(id));
+    }
+
+    @Override
+    public InboxItemResponseDto reject(UUID id) {
+        InboxItem entity = findOrThrow(id);
+        entity.setStatus("REJECTED");
         return toDto(repository.save(entity));
     }
 

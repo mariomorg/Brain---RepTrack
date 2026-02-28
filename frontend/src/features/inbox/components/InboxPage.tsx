@@ -175,7 +175,7 @@ function BrainMiniCard({ note }: { note: Note }) {
             {note.summary && <div className="brain-mini-card__summary">{note.summary}</div>}
             {note.tags && note.tags.length > 0 && (
                 <div className="brain-mini-card__tags">
-                    {note.tags.slice(0, 3).map((t) => <TagChip key={t} tag={t} />)}
+                    {note.tags.slice(0, 3).map((t) => <TagChip key={t.name} tag={t.name} />)}
                 </div>
             )}
         </div>
@@ -201,9 +201,116 @@ function AttachmentPreview({ attachment, onRemove }: { attachment: AttachedFile;
     );
 }
 
+/* ─────────────────────────── AI Proposal helpers ─────────────────────────── */
+interface AiProposal {
+    clasificacion?: Array<{ nivel: number; etiqueta: string; confianza: number }>;
+    clasificacion_final_valida?: boolean;
+    motivo?: string;
+    rationale?: string;
+    paths?: Array<{ path: string; confidence: number }>;
+}
+
+function parseProposal(json: string | null): AiProposal | null {
+    if (!json) return null;
+    try { return JSON.parse(json); } catch { return null; }
+}
+
+/* Approval card shown for AWAITING_APPROVAL items */
+function AiApprovalCard({
+    item,
+    onApprove,
+    onReject,
+    onRemove,
+}: {
+    item: InboxItem;
+    onApprove: () => void;
+    onReject: () => void;
+    onRemove: () => void;
+}) {
+    const proposal = parseProposal(item.proposalsJson);
+    const clasif = proposal?.clasificacion ?? [];
+    const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
+    const pathLabel = clasif.map(c => c.etiqueta).join(' → ');
+    const minConf = clasif.length > 0 ? Math.min(...clasif.map(c => c.confianza)) : null;
+
+    // Legacy paths fallback
+    const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
+
+    return (
+        <div className="inbox-item-card inbox-item-card--approval">
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                    <div className="inbox-item__type-badge" style={{ marginBottom: 4 }}>
+                        <ExtIcon />
+                        {typeLabelForItem(item)}
+                    </div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                </div>
+                <button
+                    className="capture-toolbar-btn"
+                    title="Eliminar"
+                    onClick={onRemove}
+                    style={{ color: '#EF4444', flexShrink: 0 }}
+                >
+                    <TrashIcon />
+                </button>
+            </div>
+
+            {/* AI classification result */}
+            <div className="ai-proposal-box">
+                <div className="ai-proposal-box__label">
+                    <BrainIcon /> Propuesta de la IA
+                    {minConf !== null && (
+                        <span className="ai-proposal-box__conf">{minConf}% conf.</span>
+                    )}
+                </div>
+
+                {pathLabel ? (
+                    <div className="ai-proposal-box__path">
+                        {clasif.map((c, i) => (
+                            <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                <TagChip tag={c.etiqueta} />
+                            </span>
+                        ))}
+                    </div>
+                ) : legacyPath ? (
+                    <div className="ai-proposal-box__path">
+                        {legacyPath.split('/').map((seg, i) => (
+                            <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                <TagChip tag={seg} />
+                            </span>
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+                        Sin clasificación definida
+                    </div>
+                )}
+
+                {motivo && (
+                    <div className="ai-proposal-box__motivo">{motivo}</div>
+                )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="ai-proposal-actions">
+                <button className="ai-action-btn ai-action-btn--approve" onClick={onApprove}>
+                    <CheckIcon /> Aprobar
+                </button>
+                <button className="ai-action-btn ai-action-btn--reject" onClick={onReject}>
+                    <XIcon /> Rechazar
+                </button>
+            </div>
+        </div>
+    );
+}
+
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, pendingCount, loading, submitting, capture, remove } = useInbox();
+    const { pendingItems, pendingCount, loading, submitting, capture, remove, approve, reject } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -453,6 +560,72 @@ export default function InboxPage() {
                 }
 
                 .mic-active { color: #ef4444 !important; }
+
+                /* ── AI Approval card ── */
+                .inbox-item-card--approval {
+                    border-color: rgba(99,102,241,.35);
+                    background: linear-gradient(135deg, rgba(99,102,241,.05) 0%, transparent 100%);
+                }
+                .ai-proposal-box {
+                    background: var(--color-bg, #11111f);
+                    border: 1px solid var(--color-border, #2d2d4a);
+                    border-radius: 8px;
+                    padding: 10px 12px;
+                    margin-bottom: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .ai-proposal-box__label {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: .05em;
+                    color: var(--color-accent, #6366f1);
+                }
+                .ai-proposal-box__conf {
+                    margin-left: auto;
+                    font-size: 11px;
+                    font-weight: 500;
+                    color: var(--color-text-muted, #94a3b8);
+                }
+                .ai-proposal-box__path {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 4px;
+                }
+                .ai-proposal-box__motivo {
+                    font-size: 12px;
+                    color: var(--color-text-muted, #94a3b8);
+                    font-style: italic;
+                    line-height: 1.4;
+                }
+                .ai-proposal-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                .ai-action-btn {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    border: none;
+                    transition: opacity .15s, transform .1s;
+                }
+                .ai-action-btn:hover { opacity: .85; transform: translateY(-1px); }
+                .ai-action-btn:active { transform: translateY(0); }
+                .ai-action-btn--approve { background: #059669; color: #fff; }
+                .ai-action-btn--reject  { background: rgba(239,68,68,.15); color: #ef4444; border: 1px solid rgba(239,68,68,.3); }
             `}</style>
 
             {/* Toast */}
@@ -505,7 +678,7 @@ export default function InboxPage() {
                         )}
 
                         <div className="capture-box__toolbar">
-                        
+
 
                             {/* File button */}
                             <button
@@ -560,7 +733,7 @@ export default function InboxPage() {
 
                     {/* Pending section */}
                     <div className="pending-section__header">
-                        <span className="pending-section__title">Pendientes de procesar</span>
+                        <span className="pending-section__title">Actividad del inbox</span>
                         <span className="pending-count-badge">{pendingCount} items</span>
                     </div>
 
@@ -571,39 +744,75 @@ export default function InboxPage() {
                             <div className="empty-state__icon">✅</div>
                             <p className="empty-state__text">Sin elementos pendientes. ¡Todo procesado!</p>
                         </div>
-                    ) : (
-                        <div className="inbox-items-list">
-                            {pendingItems.map(item => (
-                                <div key={item.id} className="inbox-item-card">
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                                        <div style={{ flex: 1 }}>
-                                            <div className="inbox-item__type-badge">
-                                                <ExtIcon />
-                                                {typeLabelForItem(item)}
+                    ) : (() => {
+                        const awaitingItems = pendingItems.filter(i => i.status === 'AWAITING_APPROVAL');
+                        const processingItems = pendingItems.filter(i => i.status !== 'AWAITING_APPROVAL');
+                        return (
+                            <>
+                                {/* ── Items awaiting user approval ── */}
+                                {awaitingItems.length > 0 && (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                            <BrainIcon /> Esperando tu revisión
+                                        </div>
+                                        <div className="inbox-items-list" style={{ marginBottom: 20 }}>
+                                            {awaitingItems.map(item => (
+                                                <AiApprovalCard
+                                                    key={item.id}
+                                                    item={item}
+                                                    onApprove={() => approve(item.id)}
+                                                    onReject={() => reject(item.id)}
+                                                    onRemove={() => remove(item.id)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ── Items being processed by AI ── */}
+                                {processingItems.length > 0 && (
+                                    <>
+                                        {awaitingItems.length > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                Procesando
                                             </div>
-                                            <div className="inbox-item__text">{item.rawText}</div>
-                                            {isUrl(item.rawText.trim()) && (
-                                                <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
-                                                    {item.rawText.trim()}
-                                                </a>
-                                            )}
-                                            <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                                        )}
+                                        <div className="inbox-items-list">
+                                            {processingItems.map(item => (
+                                                <div key={item.id} className="inbox-item-card">
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div className="inbox-item__type-badge">
+                                                                <ExtIcon />
+                                                                {typeLabelForItem(item)}
+                                                            </div>
+                                                            <div className="inbox-item__text">{item.rawText}</div>
+                                                            {isUrl(item.rawText.trim()) && (
+                                                                <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
+                                                                    {item.rawText.trim()}
+                                                                </a>
+                                                            )}
+                                                            <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 4 }}>
+                                                            <button
+                                                                className="capture-toolbar-btn"
+                                                                title="Eliminar"
+                                                                onClick={() => remove(item.id)}
+                                                                style={{ color: '#EF4444' }}
+                                                            >
+                                                                <TrashIcon />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <div style={{ display: 'flex', gap: 4 }}>
-                                            <button
-                                                className="capture-toolbar-btn"
-                                                title="Eliminar"
-                                                onClick={() => remove(item.id)}
-                                                style={{ color: '#EF4444' }}
-                                            >
-                                                <TrashIcon />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
                 </div>
 
                 {/* ── Right sidebar ── */}
