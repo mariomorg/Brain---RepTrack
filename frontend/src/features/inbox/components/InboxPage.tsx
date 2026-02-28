@@ -123,16 +123,46 @@ function isUrl(text: string): boolean {
     try { new URL(text); return true; } catch { return false; }
 }
 
+/** For FILE and VIDEO_REF items, show only the first line (filename/title) instead of the full text. */
+function displayText(item: InboxItem): string {
+    if ((item.detectedType === 'FILE' || item.detectedType === 'VIDEO_REF') && item.rawText) {
+        const firstLine = item.rawText.split('\n')[0].trim();
+        return firstLine || item.rawText;
+    }
+    return item.rawText;
+}
+
 /** Module-level helper keeps nesting depth within limits. */
 function applyImagePreview(id: string, url: string, prev: AttachedFile[]): AttachedFile[] {
     return prev.map(a => (a.id === id ? { ...a, preview: url } : a));
 }
 
-function detectType(text: string, attachments: AttachedFile[]): string {
+const VIDEO_DOMAINS = ['youtube.com', 'youtu.be', 'vimeo.com', 'dailymotion.com', 'twitch.tv', 'tiktok.com', 'loom.com'];
+const ARTICLE_DOMAINS = ['medium.com', 'dev.to', 'hashnode.com', 'substack.com', 'arxiv.org', 'wikipedia.org', 'notion.so'];
+const CODE_MARKERS = /^(import |from |package |class |def |fn |func |function |const |let |var |public |private |#include|<\?php|SELECT |CREATE TABLE)/m;
+
+function detectContentType(text: string, attachments: AttachedFile[]): string {
     if (attachments.some(a => a.type === 'image')) return 'FILE';
-    if (attachments.some(a => a.type === 'audio')) return 'AUDIO';
+    if (attachments.some(a => a.type === 'audio')) return 'VOICE_NOTE';
     if (attachments.length > 0) return 'FILE';
-    if (isUrl(text.trim())) return 'LINK';
+
+    const trimmed = text.trim();
+    if (!trimmed) return 'TEXT';
+
+    // Pure URL
+    if (isUrl(trimmed)) {
+        const lower = trimmed.toLowerCase();
+        if (VIDEO_DOMAINS.some(d => lower.includes(d))) return 'VIDEO_REF';
+        if (ARTICLE_DOMAINS.some(d => lower.includes(d))) return 'ARTICLE_REF';
+        return 'LINK';
+    }
+
+    // Code detection
+    if (trimmed.includes('```') || CODE_MARKERS.test(trimmed)) return 'CODE';
+
+    // Short casual text = idea
+    if (trimmed.length <= 280 && trimmed.split('\n').length <= 3 && !trimmed.includes('http')) return 'IDEA';
+
     return 'TEXT';
 }
 
@@ -148,9 +178,15 @@ function formatRelativeTime(iso: string): string {
 }
 
 function typeLabelForItem(item: InboxItem): string {
+    const typeMap: Record<string, string> = {
+        TEXT: 'TEXTO', LINK: 'ENLACE', IDEA: 'IDEA', VOICE_NOTE: 'VOZ',
+        CODE: 'CÓDIGO', VIDEO_REF: 'VÍDEO', ARTICLE_REF: 'ARTÍCULO',
+        FILE: 'ARCHIVO', AUDIO: 'AUDIO', BROWSER_EXTENSION: 'WEB',
+    };
+    if (item.detectedType && typeMap[item.detectedType]) return typeMap[item.detectedType];
     if (item.detectedType) return item.detectedType.replace('_', ' ');
-    if (isUrl(item.rawText.trim())) return 'LINK';
-    return 'TEXT';
+    if (isUrl(item.rawText.trim())) return 'ENLACE';
+    return 'TEXTO';
 }
 
 function generateId(): string {
@@ -279,6 +315,8 @@ function SmartSuggestions({ suggestions, onAction }: Readonly<{
             case 'OCR': return <FileIcon />;
             case 'URL_EXTRACT': return <LinkIcon />;
             case 'RELATIONS': return <BrainIcon />;
+            case 'CODE_FORMAT': return <FileIcon />;
+            case 'VIDEO_EXTRACT': return <LinkIcon />;
             default: return <SparkleIcon />;
         }
     };
@@ -304,114 +342,154 @@ function SmartSuggestions({ suggestions, onAction }: Readonly<{
 }
 
 /* ─────────────────────────── Card for AWAITING_APPROVAL items — "Procesar" button ─────────────────────────── */
-function PendingApprovalCard({
-    item,
-    onProcesar,
-    onReprocess,
-    onRemove,
-    processing,
+/* ─────────────────────────── Card for AWAITING_APPROVAL items — "Procesar" inline ─────────────────────────── */
+export function PendingApprovalCard({
+  item,
+  onProcesar,
+  onReprocess, // (se queda en props por compatibilidad, pero ya no se usa)
+  onRemove,
+  processing,
 }: Readonly<{
-    item: InboxItem;
-    onProcesar: () => void;
-    onReprocess: () => void;
-    onRemove: () => void;
-    processing: boolean;
+  item: InboxItem;
+  onProcesar: () => void;
+  onReprocess: () => void;
+  onRemove: () => void;
+  processing: boolean;
 }>) {
-    const proposal = parseProposal(item.proposalsJson);
-    const clasif = proposal?.clasificacion ?? [];
-    const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
-    const pathLabel = clasif.map(c => c.etiqueta).join(' → ');
-    const minConf = clasif.length > 0 ? Math.min(...clasif.map(c => c.confianza)) : null;
+  const proposal = parseProposal(item.proposalsJson);
+  const clasif = proposal?.clasificacion ?? [];
+  const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
+  const pathLabel = clasif.map((c) => c.etiqueta).join(' → ');
+  const minConf = clasif.length > 0 ? Math.min(...clasif.map((c) => c.confianza)) : null;
 
-    // Legacy paths fallback
-    const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
+  // Legacy paths fallback
+  const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
 
-    return (
-        <div className="inbox-item-card inbox-item-card--approval">
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                    <div className="inbox-item__type-badge" style={{ marginBottom: 4 }}>
-                        <ExtIcon />
-                        {typeLabelForItem(item)}
-                    </div>
-                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
-                    <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
-                </div>
-                <button
-                    className="capture-toolbar-btn"
-                    title="Eliminar"
-                    onClick={onRemove}
-                    style={{ color: '#EF4444', flexShrink: 0 }}
-                >
-                    <TrashIcon />
-                </button>
-            </div>
+  return (
+    <div className="inbox-item-card inbox-item-card--approval">
+      {/* Top row: content + actions (Procesar + Trash) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 8,
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ flex: 1 }}>
 
-            {/* AI classification result */}
-            <div className="ai-proposal-box">
-                <div className="ai-proposal-box__label">
-                    <BrainIcon /> Propuesta de la IA
-                    {minConf !== null && (
-                        <span className="ai-proposal-box__conf">{minConf}% conf.</span>
-                    )}
-                </div>
+          <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>
+            {displayText(item)}
+          </div>
 
-                {pathLabel ? (
-                    <div className="ai-proposal-box__path">
-                        {clasif.filter(c => c.etiqueta).map((c, i) => (
-                            <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
-                                <TagChip tag={c.etiqueta} />
-                            </span>
-                        ))}
-                    </div>
-                ) : null}
-                {!pathLabel && legacyPath ? (
-                    <div className="ai-proposal-box__path">
-                        {legacyPath.split('/').filter(Boolean).map((seg, i) => (
-                            <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
-                                <TagChip tag={seg} />
-                            </span>
-                        ))}
-                    </div>
-                ) : null}
-                {!pathLabel && !legacyPath ? (
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
-                        Sin clasificación definida
-                    </div>
-                ) : null}
-
-                {motivo && (
-                    <div className="ai-proposal-box__motivo">{motivo}</div>
-                )}
-            </div>
-
-            {/* Action buttons — single "Procesar" replaces approve/reject */}
-            <div className="ai-proposal-actions">
-                <button
-                    className="ai-action-btn ai-action-btn--procesar"
-                    onClick={onProcesar}
-                    disabled={processing}
-                >
-                    {processing ? (
-                        <><BrainIcon /> Procesando…</>
-                    ) : (
-                        <><CheckIcon /> Procesar</>
-                    )}
-                </button>
-            </div>
-            <div style={{ marginTop: 6 }}>
-                <button className="ai-action-btn ai-action-btn--reprocess" style={{ width: '100%' }} onClick={onReprocess} disabled={processing}>
-                    <RefreshIcon /> Reprocesar
-                </button>
-            </div>
+          <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
         </div>
-    );
+
+        {/* Actions: Procesar next to Trash */}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button
+            className="ai-action-btn ai-action-btn--procesar"
+            onClick={onProcesar}
+            disabled={processing}
+            title="Procesar"
+            style={{
+              flex: 'unset',
+              padding: '7px 10px',
+              borderRadius: 5,
+              minWidth: 70,
+              height: 30,
+              marginTop: 2,
+            }}
+          >
+            {processing ? (
+              <>
+                <BrainIcon /> Procesando…
+              </>
+            ) : (
+              <>
+                <CheckIcon /> Procesar
+              </>
+            )}
+          </button>
+
+          <button
+            className="capture-toolbar-btn"
+            title="Eliminar"
+            onClick={onRemove}
+            style={{ color: '#EF4444', flexShrink: 0, height: 34 }}
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* AI classification result */}
+      <div className="ai-proposal-box">
+        <div className="ai-proposal-box__label">
+          <BrainIcon /> Propuesta de la IA
+          {minConf !== null && <span className="ai-proposal-box__conf">{minConf}% conf.</span>}
+        </div>
+
+
+
+        {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
+      </div>
+
+      {/* AI extensive summary */}
+      {item.aiSummary && (
+        <div className="ai-summary-box">
+          <div className="ai-summary-box__label">
+            <SparkleIcon /> Resumen extenso del tema
+          </div>
+          <div className="ai-summary-box__content">{item.aiSummary}</div>
+        </div>
+      )}
+
+        {pathLabel ? (
+          <div className="ai-proposal-box__path">
+            {clasif
+              .filter((c) => c.etiqueta)
+              .map((c, i) => (
+                <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && (
+                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
+                  )}
+                  <TagChip tag={c.etiqueta} />
+                </span>
+              ))}
+          </div>
+        ) : null}
+
+        {!pathLabel && legacyPath ? (
+          <div className="ai-proposal-box__path">
+            {legacyPath
+              .split('/')
+              .filter(Boolean)
+              .map((seg, i) => (
+                <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && (
+                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
+                  )}
+                  <TagChip tag={seg} />
+                </span>
+              ))}
+          </div>
+        ) : null}
+
+        {!pathLabel && !legacyPath ? (
+          <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+            Sin clasificación definida
+          </div>
+        ) : null}
+
+    </div>
+    
+  );
 }
 
 /* ─────────────────────────── Processed card (shows result + suggestions) ─────────────────────────── */
-function ProcessedCard({
+export function ProcessedCard({
     item,
     suggestions,
     onReprocess,
@@ -442,7 +520,7 @@ function ProcessedCard({
                         <ExtIcon /> {typeLabelForItem(item)}
                         <span className="processed-badge">PROCESADO</span>
                     </div>
-                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{displayText(item)}</div>
                     <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
                 </div>
                 <button className="capture-toolbar-btn" title="Eliminar" onClick={onRemove} style={{ color: '#EF4444', flexShrink: 0 }}>
@@ -478,6 +556,14 @@ function ProcessedCard({
                 </div>
             )}
 
+            {/* AI extensive summary */}
+            {item.aiSummary && (
+                <div className="ai-summary-box">
+                    <div className="ai-summary-box__label"><SparkleIcon /> Resumen extenso del tema</div>
+                    <div className="ai-summary-box__content">{item.aiSummary}</div>
+                </div>
+            )}
+
             {/* Saved file indicator */}
             {hasSavedFile && (
                 <div style={{
@@ -493,7 +579,9 @@ function ProcessedCard({
             {/* Smart suggestions (server-side) */}
             <SmartSuggestions suggestions={suggestions} onAction={onSuggestion} />
 
+
             {/* Actions — no approve/reject */}
+            <div className="processed-actions-blank">
             <div className="processed-actions">
                 <button
                     className="ai-action-btn ai-action-btn--markdown"
@@ -506,26 +594,25 @@ function ProcessedCard({
                         return 'Crear Markdown';
                     })()}
                 </button>
-                <button className="ai-action-btn ai-action-btn--reprocess" onClick={onReprocess}>
-                    <RefreshIcon /> Reprocesar
-                </button>
+            </div>
             </div>
         </div>
     );
 }
 
+
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
+    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, captureFile, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
     const [carouselIndex, setCarouselIndex] = useState(0);
     const [carouselPaused, setCarouselPaused] = useState(false);
     // slotNotes: las 3 notas actualmente renderizadas en cada slot
-    const [slotNotes, setSlotNotes] = useState<(Note | null)[]>([null, null, null]);
+    const [slotNotes, setSlotNotes] = useState<(Note | null)[]>([null, null, null, null, null]);
     // slotVisible: controla el crossfade de cada slot
-    const [slotVisible, setSlotVisible] = useState([true, true, true]);
+    const [slotVisible, setSlotVisible] = useState([true, true, true, true, true]);
     const [isDragging, setIsDragging] = useState(false);
     const [showLinkModal, setShowLinkModal] = useState(false);
     const [recording, setRecording] = useState(false);
@@ -557,27 +644,27 @@ export default function InboxPage() {
     /* Inicializar slots cuando se cargan las notas */
     useEffect(() => {
         if (recentNotes.length === 0) return;
-        setSlotNotes([
-            recentNotes[0] ?? null,
-            recentNotes[1] ?? null,
-            recentNotes[2] ?? null,
-        ]);
-        setSlotVisible([true, true, true]);
+        const newSlots = [];
+        for (let i = 0; i < 5; i++) {
+            newSlots.push(recentNotes[i] ?? null);
+        }
+        setSlotNotes(newSlots);
+        setSlotVisible([true, true, true, true, true]);
     }, [recentNotes]);
 
     /* Avanzar: crossfade slot a slot */
     const advanceCarousel = useCallback((nextIdx?: number) => {
+        if (recentNotes.length === 0) return;
         const next = nextIdx ?? (carouselIndex + 1) % recentNotes.length;
-        setSlotVisible([false, true, true]);
+        setSlotVisible([false, true, true, true, true]);
         const applyNewSlots = () => {
-            setSlotNotes([
-                recentNotes[next] ?? null,
-                recentNotes[(next + 1) % recentNotes.length] ?? null,
-                recentNotes[(next + 2) % recentNotes.length] ?? null,
-            ]);
+            const newSlots = [];
+            for (let i = 0; i < 5; i++) {
+                newSlots.push(recentNotes[(next + i) % recentNotes.length] ?? null);
+            }
+            setSlotNotes(newSlots);
             setCarouselIndex(next);
-            // 16ms = one animation frame; lets React paint the new content before fading in
-            setTimeout(() => setSlotVisible([true, true, true]), 16);
+            setTimeout(() => setSlotVisible([true, true, true, true, true]), 16);
         };
         setTimeout(applyNewSlots, 500);
     }, [carouselIndex, recentNotes]);
@@ -800,19 +887,54 @@ export default function InboxPage() {
         const trimmed = text.trim();
         if (!trimmed && attachments.length === 0) return;
 
-        // Build rawText: if there are files, append their names
-        let rawText = trimmed;
-        if (attachments.length > 0 && !rawText) {
-            rawText = attachments.map(a => a.file.name).join(', ');
-        } else if (attachments.length > 0) {
-            rawText += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
-        }
+        // Check for document files (PDF, TXT, etc.) that should be uploaded for text extraction
+        const EXTRACTABLE_EXTENSIONS = ['.pdf', '.txt', '.md', '.csv', '.json', '.xml', '.log', '.yaml', '.yml', '.html', '.htm', '.java', '.py', '.js', '.ts', '.css', '.sql'];
+        const documentFiles = attachments.filter(a =>
+            a.type === 'file' && EXTRACTABLE_EXTENSIONS.some(ext => a.file.name.toLowerCase().endsWith(ext))
+        );
 
         try {
-            await capture({
-                rawText,
-                detectedType: detectType(trimmed, attachments),
-            });
+            if (documentFiles.length > 0) {
+                // Upload each document file for server-side text extraction
+                for (const doc of documentFiles) {
+                    await captureFile(doc.file, trimmed || undefined);
+                }
+                // If there are also non-document attachments or standalone text, send those too
+                const nonDocAttachments = attachments.filter(a => !documentFiles.includes(a));
+                if (nonDocAttachments.length > 0 || (trimmed && documentFiles.length > 1)) {
+                    let content = trimmed;
+                    if (nonDocAttachments.length > 0 && !content) {
+                        content = nonDocAttachments.map(a => a.file.name).join(', ');
+                    } else if (nonDocAttachments.length > 0) {
+                        content += '\n[Adjuntos: ' + nonDocAttachments.map(a => a.file.name).join(', ') + ']';
+                    }
+                    if (content) {
+                        const contentType = detectContentType(content, nonDocAttachments);
+                        let sourceUrl: string | undefined;
+                        if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(content)) {
+                            sourceUrl = content;
+                        }
+                        await capture({ content, contentType, sourceUrl });
+                    }
+                }
+            } else {
+                // No document files — original text-only capture flow
+                let content = trimmed;
+                if (attachments.length > 0 && !content) {
+                    content = attachments.map(a => a.file.name).join(', ');
+                } else if (attachments.length > 0) {
+                    content += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
+                }
+
+                const contentType = detectContentType(trimmed, attachments);
+                let sourceUrl: string | undefined;
+                if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
+                    sourceUrl = trimmed;
+                }
+
+                await capture({ content, contentType, sourceUrl });
+            }
+
             setText('');
             setAttachments([]);
             textareaRef.current?.focus();
@@ -907,6 +1029,11 @@ export default function InboxPage() {
 
                 .mic-active { color: #ef4444 !important; }
 
+                .ai-proposal-box__header {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: stretch;
+                }
                 .sidebar-scroll-indicator {
                     display: none;
                 }
@@ -1000,6 +1127,45 @@ export default function InboxPage() {
                     font-style: italic;
                     line-height: 1.4;
                 }
+
+                /* ── AI Summary box ── */
+                .ai-summary-box {
+                    background: linear-gradient(135deg, rgba(99,102,241,.10) 0%, rgba(139,92,246,.10) 100%);
+                    border: 1px solid rgba(139,92,246,.35);
+                    border-radius: 10px;
+                    padding: 12px 14px;
+                    margin-bottom: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .ai-summary-box__label {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: .05em;
+                    color: #a78bfa;
+                }
+                .ai-summary-box__content {
+                    font-size: 13px;
+                    line-height: 1.6;
+                    color: #000;
+                    white-space: pre-line;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    scrollbar-width: thin;
+                }
+                .ai-summary-box__content::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .ai-summary-box__content::-webkit-scrollbar-thumb {
+                    background: rgba(139,92,246,.3);
+                    border-radius: 2px;
+                }
+
                 .ai-proposal-actions {
                     display: flex;
                     gap: 8px;
@@ -1037,8 +1203,8 @@ export default function InboxPage() {
                     font-size: 9px; font-weight: 700; letter-spacing: .06em;
                     background: rgba(16,185,129,.15); color: #10b981; margin-left: 6px;
                 }
-                .processed-actions {
-                    display: flex; gap: 8px; margin-top: 8px;
+                   .processed-actions {
+                    display: flex; gap: 8px; margin-top: 8px; width: 50%; margin-left: auto; margin-right: auto;
                 }
 
                 /* ── Smart suggestions ── */
@@ -1114,7 +1280,7 @@ export default function InboxPage() {
                         <textarea
                             ref={textareaRef}
                             className="capture-box__textarea"
-                            placeholder="Escribe una idea, pega un enlace, arrastra archivos o pega una imagen con Ctrl+V…"
+                            placeholder="Captura cualquier cosa: una idea, enlace, código, referencia a vídeo o artículo, nota de voz…"
                             value={text}
                             onChange={e => setText(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -1133,6 +1299,14 @@ export default function InboxPage() {
 
                         <div className="capture-box__toolbar">
 
+                            {/* Link button */}
+                            <button
+                                className="capture-toolbar-btn"
+                                title="Insertar enlace (vídeo, artículo, web…)"
+                                onClick={() => setShowLinkModal(true)}
+                            >
+                                <LinkIcon />
+                            </button>
 
                             {/* File button */}
                             <button
@@ -1187,13 +1361,12 @@ export default function InboxPage() {
                             </button>
                         </div>
                         <div className="capture-box__hint">
-                            Enter para guardar&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar imágenes&nbsp;•&nbsp;Shift+Enter para nueva línea
+                            Enter para guardar&nbsp;•&nbsp;Texto, enlaces, código, vídeos, ideas&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar
                         </div>
                     </section>
 
                     <div className="pending-section__header">
                         <span className="pending-section__title">Actividad del inbox</span>
-                        <span className="pending-count-badge">{pendingCount} items</span>
                     </div>
 
                     {(() => {
@@ -1213,12 +1386,14 @@ export default function InboxPage() {
                         return (
                             <>
                                 {/* ── Items awaiting user action — "Procesar" button ── */}
+                                <div className="ai-proposal-box">
                                 {awaitingItems.length > 0 && (
                                     <>
+                                        <div className="ai-proposal-box__header">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
                                             <BrainIcon /> Listos para procesar
                                         </div>
-                                        <div className="inbox-items-list" style={{ marginBottom: 20 }}>
+                                        <div className="inbox-items-list" style={{ marginBottom: 20, marginTop: -7 }}>
                                             {awaitingItems.map(item => (
                                                 <PendingApprovalCard
                                                     key={item.id}
@@ -1230,12 +1405,16 @@ export default function InboxPage() {
                                                 />
                                             ))}
                                         </div>
+                                        </div>
                                     </>
                                 )}
 
                                 {/* ── Items being processed by AI ── */}
+                                
+
                                 {processingItems.length > 0 && (
                                     <>
+                                    <div className="ai-proposal-box__header">
                                         {awaitingItems.length > 0 && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
                                                 Procesando
@@ -1250,7 +1429,7 @@ export default function InboxPage() {
                                                                 <ExtIcon />
                                                                 {typeLabelForItem(item)}
                                                             </div>
-                                                            <div className="inbox-item__text">{item.rawText}</div>
+                                                            <div className="inbox-item__text">{displayText(item)}</div>
                                                             {isUrl(item.rawText.trim()) && (
                                                                 <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
                                                                     {item.rawText.trim()}
@@ -1272,13 +1451,15 @@ export default function InboxPage() {
                                                 </div>
                                             ))}
                                         </div>
+                                        </div>
                                     </>
+                                    
                                 )}
 
                                 {/* ── Recently processed (no approve/reject) ── */}
                                 {processedItems.length > 0 && (
-                                    <>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0 0', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',marginTop: 0 }}>
                                             <CheckIcon /> Procesados recientemente
                                         </div>
                                         <div className="inbox-items-list">
@@ -1295,11 +1476,17 @@ export default function InboxPage() {
                                                 />
                                             ))}
                                         </div>
-                                    </>
+                                    </div>
                                 )}
+                                
+                                </div>
+                                
                             </>
+                            
                         );
+                        
                     })()}
+                    
                 </div>
 
                 {/* ── Right sidebar ── */}
@@ -1341,8 +1528,10 @@ export default function InboxPage() {
                                     let slotOpacity = 0;
                                     if (slotVisible[offset]) {
                                         if (offset === 0) { slotOpacity = 1; }
-                                        else if (offset === 1) { slotOpacity = 0.5; }
-                                        else { slotOpacity = 0.2; }
+                                        else if (offset === 1) { slotOpacity = 0.7; }
+                                        else if (offset === 2) { slotOpacity = 0.5; }
+                                        else if (offset === 3) { slotOpacity = 0.3; }
+                                        else { slotOpacity = 0.15; }
                                     }
                                     return (
                                         <button

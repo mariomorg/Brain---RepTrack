@@ -81,8 +81,28 @@ export default function ResourceDetailPage() {
 
         <section className="resource-section">
           <strong>Recurso original:</strong>
-          <ReactMarkdown>{note.originalContent || 'Sin contenido original.'}</ReactMarkdown>
+          {note.detectedType === 'FILE' ? (
+            <p className="file-title-display">📄 {note.originalContent || note.title}</p>
+          ) : note.detectedType === 'VIDEO_REF' ? (
+            <div className="file-title-display">
+              <p>🎬 {note.originalContent || note.title}</p>
+              {note.sourceUrl && (
+                <a href={note.sourceUrl} target="_blank" rel="noopener noreferrer" className="video-source-link">
+                  🔗 {note.sourceUrl}
+                </a>
+              )}
+            </div>
+          ) : (
+            <ReactMarkdown>{note.originalContent || 'Sin contenido original.'}</ReactMarkdown>
+          )}
         </section>
+
+        {note.aiSummary && (
+          <section className="resource-section ai-summary-section">
+            <strong>Resumen extenso:</strong>
+            <ReactMarkdown>{note.aiSummary}</ReactMarkdown>
+          </section>
+        )}
 
         {note.summary && (
           <section className="resource-section">

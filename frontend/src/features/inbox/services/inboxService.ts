@@ -5,11 +5,40 @@ import {
     CreateInboxItemRequest,
     UpdateInboxItemRequest,
     ProcessResult,
+    CaptureRequest,
 } from '../types/inbox.types';
 
 const BASE = '/inbox';
 
 export const inboxService = {
+    /**
+     * Unified capture — single entry point for any content type.
+     * Content type is auto-detected when not specified.
+     */
+    capture: async (data: CaptureRequest): Promise<InboxItem> => {
+        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/capture`, data);
+        return res.data.data;
+    },
+
+    /**
+     * Upload a file (PDF, TXT, etc.) — the backend extracts text content
+     * and processes it through the AI pipeline.
+     */
+    captureFile: async (file: File, additionalText?: string): Promise<InboxItem> => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (additionalText) {
+            formData.append('text', additionalText);
+        }
+        const res = await apiClient.post<ApiResponse<InboxItem>>(
+            `${BASE}/capture/file`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } },
+        );
+        return res.data.data;
+    },
+
+    /** @deprecated Use capture() instead */
     create: async (data: CreateInboxItemRequest): Promise<InboxItem> => {
         const res = await apiClient.post<ApiResponse<InboxItem>>(BASE, data);
         return res.data.data;

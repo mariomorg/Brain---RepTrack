@@ -1,8 +1,10 @@
 package com.brainreptrack.inbox.controller;
 
 import com.brainreptrack.inbox.client.TranscriptionClient;
+import com.brainreptrack.inbox.dto.CaptureRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
+import com.brainreptrack.inbox.service.FileTextExtractor;
 import com.brainreptrack.inbox.service.InboxItemService;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
@@ -26,6 +28,93 @@ public class InboxItemController {
 
     private final TranscriptionClient transcriptionClient;
 
+    private final FileTextExtractor fileTextExtractor;
+
+    // =====================================================================
+    // UNIFIED CAPTURE — single entry point for any content type
+    // =====================================================================
+
+    /**
+     * Unified capture endpoint — accepts text, links, ideas, code, video refs,
+     * article refs, and any other content type. Content type is auto-detected
+     * when not specified by the caller.
+     *
+     * <p>
+     * Usage examples:
+     * 
+     * <pre>
+     * POST /api/inbox/capture  { "content": "una idea suelta" }
+     * POST /api/inbox/capture  { "content": "https://youtube.com/...", "contentType": "VIDEO_REF" }
+     * POST /api/inbox/capture  { "content": "function hello() {...}", "contentType": "CODE", "metadata": {"language": "js"} }
+     * </pre>
+     */
+    @PostMapping("/capture")
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> capture(
+            @Valid @RequestBody CaptureRequestDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.capture(dto)));
+    }
+
+    /**
+     * Voice-note capture — uploads audio, transcribes it, and feeds the
+     * transcript into the unified capture pipeline as a VOICE_NOTE.
+     */
+    @PostMapping(value = "/capture/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> captureAudio(
+            @RequestParam("file") MultipartFile file) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("El archivo de audio está vacío"));
+        }
+
+        String transcript = transcriptionClient.transcribe(file);
+
+        CaptureRequestDto captureDto = CaptureRequestDto.builder()
+                .content(transcript)
+                .contentType("VOICE_NOTE")
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.capture(captureDto)));
+    }
+
+    /**
+     * File capture — uploads a file (PDF, TXT, etc.), extracts its text content,
+     * and feeds it into the unified capture pipeline as a FILE item.
+     * An optional 'text' parameter can provide additional context from the user.
+     */
+    @PostMapping(value = "/capture/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> captureFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "text", required = false) String additionalText) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("El archivo está vacío"));
+        }
+
+        // Extract text content from the file
+        String extractedText = fileTextExtractor.extractText(file);
+
+        // Combine: user text + extracted content
+        String content;
+        if (additionalText != null && !additionalText.isBlank()) {
+            content = additionalText.trim() + "\n\n--- Contenido del archivo: "
+                    + file.getOriginalFilename() + " ---\n\n" + extractedText;
+        } else {
+            content = extractedText;
+        }
+
+        CaptureRequestDto captureDto = CaptureRequestDto.builder()
+                .content(content)
+                .contentType("FILE")
+                .title(file.getOriginalFilename())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(service.capture(captureDto)));
+    }
 
     @PostMapping
     public ResponseEntity<ApiResponse<InboxItemResponseDto>> create(
@@ -96,6 +185,10 @@ public class InboxItemController {
         return ResponseEntity.ok(ApiResponse.ok(service.createMarkdown(id)));
     }
 
+    /**
+     * @deprecated Use {@code POST /capture/audio} instead.
+     *             Kept for backward compatibility with older frontend versions.
+     */
     @PostMapping(value = "/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<InboxItemResponseDto>> createFromAudio(
             @RequestParam("file") MultipartFile file) {
@@ -114,7 +207,5 @@ public class InboxItemController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(service.create(dto)));
     }
-
-
 
 }

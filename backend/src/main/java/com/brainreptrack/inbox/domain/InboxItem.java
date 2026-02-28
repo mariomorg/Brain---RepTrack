@@ -39,6 +39,21 @@ public class InboxItem {
     @Column(name = "output_path", length = 512)
     private String outputPath;
 
+    /** The original URL when the captured content is a link / video / article. */
+    @Column(name = "source_url", length = 2048)
+    private String sourceUrl;
+
+    /**
+     * Arbitrary key-value metadata stored as a JSON string (language, platform,
+     * etc.).
+     */
+    @Column(name = "metadata", columnDefinition = "TEXT")
+    private String metadata;
+
+    /** Extensive AI-generated summary of the topic. */
+    @Column(name = "ai_summary", columnDefinition = "TEXT")
+    private String aiSummary;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

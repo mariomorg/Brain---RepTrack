@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { InboxItem, CreateInboxItemRequest, ProcessResult } from '../types/inbox.types';
+import { InboxItem, CaptureRequest, ProcessResult } from '../types/inbox.types';
 import { inboxService } from '../services/inboxService';
 
 const POLL_INTERVAL_MS = 3000; // poll while PENDING/PROCESSING items exist
@@ -22,12 +22,10 @@ export function useInbox() {
                 inboxService.findByStatus('AWAITING_APPROVAL'),
                 inboxService.findByStatus('PROCESSED'),
             ]);
-            // Merge and sort by creation date (newest first)
             const all = [...pending, ...processing, ...awaitingApproval]
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setPendingItems(all);
             setPendingCount(all.length);
-            // Show recent processed items (newest first, capped)
             const recentProcessed = [...processed]
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                 .slice(0, MAX_PROCESSED_ITEMS);
@@ -43,7 +41,6 @@ export function useInbox() {
         loadPending();
     }, [loadPending]);
 
-    // Poll every POLL_INTERVAL_MS only while items are being AI-processed.
     useEffect(() => {
         const hasActiveItems = pendingItems.some(
             item => item.status === 'PENDING' || item.status === 'PROCESSING'
@@ -53,13 +50,32 @@ export function useInbox() {
         return () => clearInterval(id);
     }, [pendingItems, loadPending]);
 
-    const capture = useCallback(async (request: CreateInboxItemRequest) => {
+    /**
+     * Unified capture — uses the new /capture endpoint with auto-detection.
+     */
+    const capture = useCallback(async (request: CaptureRequest) => {
         try {
             setSubmitting(true);
-            await inboxService.create(request);
+            await inboxService.capture(request);
             await loadPending();
         } catch (e) {
             setError('Error al guardar el elemento');
+            throw e;
+        } finally {
+            setSubmitting(false);
+        }
+    }, [loadPending]);
+
+    /**
+     * File capture — uploads a file (PDF, TXT, etc.) and extracts text on the backend.
+     */
+    const captureFile = useCallback(async (file: File, additionalText?: string) => {
+        try {
+            setSubmitting(true);
+            await inboxService.captureFile(file, additionalText);
+            await loadPending();
+        } catch (e) {
+            setError('Error al subir el archivo');
             throw e;
         } finally {
             setSubmitting(false);
@@ -120,6 +136,7 @@ export function useInbox() {
         submitting,
         error,
         capture,
+        captureFile,
         dismiss,
         remove,
         procesar,

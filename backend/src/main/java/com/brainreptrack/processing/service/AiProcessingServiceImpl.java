@@ -1,5 +1,7 @@
 package com.brainreptrack.processing.service;
 
+import com.brainreptrack.inbox.client.TranscriptionClient;
+import com.brainreptrack.inbox.domain.ContentType;
 import com.brainreptrack.inbox.domain.InboxItem;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.note.domain.Note;
@@ -43,6 +45,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     private final OllamaClient ollamaClient;
     private final ObjectMapper objectMapper;
     private final SuggestionAnalyzer suggestionAnalyzer;
+    private final SummaryGenerationService summaryGenerationService;
+    private final TranscriptionClient transcriptionClient;
     private final Path markdownOutputDir;
 
     public AiProcessingServiceImpl(
@@ -52,6 +56,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             OllamaClient ollamaClient,
             ObjectMapper objectMapper,
             SuggestionAnalyzer suggestionAnalyzer,
+            SummaryGenerationService summaryGenerationService,
+            TranscriptionClient transcriptionClient,
             @Value("${markdown.output-dir:./markdown-notes}") String markdownOutputDirStr) {
         this.inboxItemRepository = inboxItemRepository;
         this.noteRepository = noteRepository;
@@ -59,6 +65,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         this.ollamaClient = ollamaClient;
         this.objectMapper = objectMapper;
         this.suggestionAnalyzer = suggestionAnalyzer;
+        this.summaryGenerationService = summaryGenerationService;
+        this.transcriptionClient = transcriptionClient;
         this.markdownOutputDir = Paths.get(markdownOutputDirStr);
         try {
             Files.createDirectories(this.markdownOutputDir);
@@ -109,11 +117,39 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         inboxItemRepository.save(item);
 
         try {
+            // ── 1b. VIDEO_REF: download audio, transcribe, enrich rawText ────
+            if ("VIDEO_REF".equals(item.getDetectedType()) && item.getSourceUrl() != null) {
+                try {
+                    log.info("[AI] VIDEO_REF detected — transcribing video: {}", item.getSourceUrl());
+                    TranscriptionClient.VideoTranscriptionResponse videoResult = transcriptionClient
+                            .transcribeVideo(item.getSourceUrl());
+
+                    // Store: first line = video title, rest = transcript
+                    String videoTitle = videoResult.getTitle() != null
+                            ? videoResult.getTitle()
+                            : item.getSourceUrl();
+                    String transcript = videoResult.getTranscript() != null
+                            ? videoResult.getTranscript()
+                            : "";
+
+                    item.setRawText(videoTitle + "\n" + transcript);
+                    inboxItemRepository.save(item);
+
+                    log.info("[AI] Video transcribed successfully: '{}' ({} chars transcript)",
+                            videoTitle, transcript.length());
+                } catch (Exception videoEx) {
+                    log.warn("[AI] Video transcription failed for {}: {}. Processing with URL only.",
+                            inboxItemId, videoEx.getMessage());
+                    // Non-fatal — processing continues with the original URL text
+                }
+            }
+
             // ── 2. Load existing tag tree ───────────────────────────────────
             List<Tag> allTags = tagRepository.findAll();
 
-            // ── 3. Build prompt (dynamic) ───────────────────────────────
-            String prompt = buildPrompt(item.getRawText(), allTags);
+            // ── 3. Build prompt (dynamic, content-type aware) ────────────────────
+            String contentTypeCtx = buildContentTypeContext(item.getDetectedType());
+            String prompt = buildPrompt(contentTypeCtx + item.getRawText(), allTags);
 
             // ── 3. Call AI ───────────────────────────────────────────────────
             OllamaResponse ollamaResponse = ollamaClient.generate(prompt);
@@ -138,6 +174,21 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             // ── 5. Store result as JSON ──────────────────────────────────────
             String proposalsJson = objectMapper.writeValueAsString(result);
             item.setProposalsJson(proposalsJson);
+
+            // ── 5b. Generate extensive topic summary (with web search if needed) ─
+            try {
+                String summary = summaryGenerationService.generateSummary(
+                        item.getRawText(), item.getDetectedType());
+                if (summary != null && !summary.isBlank()) {
+                    item.setAiSummary(summary);
+                    log.info("[AI] Extensive summary generated for InboxItem {} ({} chars)",
+                            inboxItemId, summary.length());
+                }
+            } catch (Exception summaryEx) {
+                log.warn("[AI] Summary generation failed for InboxItem {}: {}",
+                        inboxItemId, summaryEx.getMessage());
+                // Non-fatal — processing continues without a summary
+            }
 
             // ── 6. Mark as awaiting user approval ────────────────────────────────
             item.setStatus("AWAITING_APPROVAL");
@@ -193,6 +244,13 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             String mdPrompt = buildMarkdownPrompt(item, classification);
             OllamaResponse mdResponse = ollamaClient.generate(mdPrompt);
             markdown = stripCodeFences(mdResponse.getResponse());
+
+            // Append the extensive AI summary as a dedicated section in the markdown
+            String aiSummary = item.getAiSummary();
+            if (aiSummary != null && !aiSummary.isBlank()) {
+                markdown = markdown + "\n\n## Resumen extenso\n\n" + aiSummary.strip() + "\n";
+            }
+
             saveMarkdownToFile(item, markdown);
         } catch (Exception e) {
             log.error("[AI] Markdown generation failed for {}: {}", inboxItemId, e.getMessage());
@@ -210,6 +268,9 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 .proposalsJson(item.getProposalsJson())
                 .finalJson(item.getFinalJson())
                 .outputPath(item.getOutputPath())
+                .sourceUrl(item.getSourceUrl())
+                .metadata(item.getMetadata())
+                .aiSummary(item.getAiSummary())
                 .createdAt(item.getCreatedAt())
                 .processedAt(item.getProcessedAt())
                 .build();
@@ -221,6 +282,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 .item(itemDto)
                 .classification(classification)
                 .markdown(markdown)
+                .aiSummary(item.getAiSummary())
                 .suggestions(suggestions)
                 .build();
     }
@@ -248,6 +310,12 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         String prompt = buildMarkdownPrompt(item, result);
         OllamaResponse ollamaResponse = ollamaClient.generate(prompt);
         String markdown = stripCodeFences(ollamaResponse.getResponse());
+
+        // Append the extensive AI summary as a dedicated section
+        String aiSummary = item.getAiSummary();
+        if (aiSummary != null && !aiSummary.isBlank()) {
+            markdown = markdown + "\n\n## Resumen extenso\n\n" + aiSummary.strip() + "\n";
+        }
 
         // Save to file and store path
         String filePath = saveMarkdownToFile(item, markdown);
@@ -404,7 +472,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
 
         // Tags: one NoteTag per classification level that survived clamping,
         // storing the AI's per-level confidence. The tag name is the full
-        // accumulated path up to that level (e.g. "dev", "dev/frontend", "dev/frontend/react").
+        // accumulated path up to that level (e.g. "dev", "dev/frontend",
+        // "dev/frontend/react").
         int keptLevels = path.split("/").length;
         String[] pathParts = path.split("/");
         Set<NoteTag> tags = new LinkedHashSet<>();
@@ -460,7 +529,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             String segment = parts[i].trim();
             if (segment.isEmpty())
                 continue;
-            // Build the full accumulated path for this level (e.g. "ia", "ia/ml", "ia/ml/tensorflow")
+            // Build the full accumulated path for this level (e.g. "ia", "ia/ml",
+            // "ia/ml/tensorflow")
             String accumulatedName = String.join("/", Arrays.copyOfRange(parts, 0, i + 1));
             tagRepository.upsert(accumulatedName, parent);
             parent = accumulatedName;
@@ -475,6 +545,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
      * Selects the appropriate prompt strategy:
      * • No existing tags → creation mode (AI proposes a brand-new path).
      * • Tags exist → classification mode (AI classifies into the tree).
+     *
+     * Both modes receive content-type context when available.
      */
     private String buildPrompt(String rawText, List<Tag> allTags) {
         if (allTags.isEmpty()) {
@@ -482,6 +554,32 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         } else {
             return buildClassificationPrompt(rawText, allTags);
         }
+    }
+
+    /**
+     * Builds a content-type context preamble for the AI prompt.
+     * This helps the model understand what kind of content it's analysing.
+     */
+    private String buildContentTypeContext(String detectedType) {
+        if (detectedType == null || detectedType.isBlank())
+            return "";
+        ContentType type = ContentType.fromString(detectedType);
+        return switch (type) {
+            case LINK -> "\n[CONTENT TYPE: Web link. Focus on the topic the URL refers to, not the URL itself.]\n";
+            case IDEA ->
+                "\n[CONTENT TYPE: Fleeting idea. This is a quick, unstructured thought. Classify by its core topic.]\n";
+            case VOICE_NOTE ->
+                "\n[CONTENT TYPE: Voice note transcription. May contain informal language, filler words, or incomplete sentences. Extract the core meaning.]\n";
+            case CODE ->
+                "\n[CONTENT TYPE: Code snippet. Classify by the technology, language, or domain the code belongs to.]\n";
+            case VIDEO_REF ->
+                "\n[CONTENT TYPE: Video transcription. The first line is the video title, followed by the audio transcript. Classify by the subject matter of the video content.]\n";
+            case ARTICLE_REF ->
+                "\n[CONTENT TYPE: Article/paper reference. Classify by the article's topic and field.]\n";
+            case FILE -> "\n[CONTENT TYPE: File attachment. Classify based on the file description or name.]\n";
+            case BROWSER_EXTENSION -> "\n[CONTENT TYPE: Browser capture. Content was captured from a web page.]\n";
+            default -> "";
+        };
     }
 
     /**
@@ -638,12 +736,21 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             }
         }
 
+        // Include the extensive AI summary if available
+        String aiSummary = item.getAiSummary();
+        if (aiSummary != null && !aiSummary.isBlank()) {
+            context.append("\nExtensive topic summary (use this to enrich the note):\n");
+            context.append(aiSummary).append("\n");
+        }
+
         String detectedType = item.getDetectedType() != null ? item.getDetectedType() : "TEXT";
         String createdAt = item.getCreatedAt() != null ? item.getCreatedAt().toString() : "unknown";
 
         return """
                 You are a Markdown note generator for a personal knowledge base.
                 Convert the following raw content into a clean, well-structured Markdown note.
+                If an extensive topic summary is provided, USE IT to create a richer, more
+                detailed note that goes beyond the original raw content.
 
                 Context provided:
                 """ + context + """
@@ -652,6 +759,8 @@ public class AiProcessingServiceImpl implements AiProcessingService {
                 Rules:
                 - Start with a single # heading derived from the content (NOT from the classification path).
                 - Use ## subheadings if the content has clear sections.
+                - If an extensive summary is provided, integrate its key points into the note
+                  as additional sections (## Contexto, ## Detalles, etc.).
                 - Convert any lists, enumerations or steps into proper Markdown lists (- or 1.).
                 - Preserve URLs as [text](url) links.
                 - At the bottom, add a metadata block like:

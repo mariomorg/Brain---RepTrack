@@ -19,46 +19,82 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OllamaClient {
 
-    private final RestTemplate restTemplate;
+        private final RestTemplate restTemplate;
 
-    @Value("${ollama.url:http://localhost:11434}")
-    private String ollamaUrl;
+        @Value("${ollama.url:http://localhost:11434}")
+        private String ollamaUrl;
 
-    @Value("${ollama.model:llama3.2}")
-    private String defaultModel;
+        @Value("${ollama.model:llama3.2}")
+        private String defaultModel;
 
-    /**
-     * Sends a prompt to Ollama and returns the raw response object.
-     *
-     * @param prompt the full prompt text
-     * @return OllamaResponse with the generated text in {@code response}
-     * @throws RestClientException if the HTTP call fails
-     */
-    public OllamaResponse generate(String prompt) {
-        String endpoint = ollamaUrl + "/api/chat";
+        /**
+         * Sends a prompt to Ollama and returns the raw response object.
+         *
+         * @param prompt the full prompt text
+         * @return OllamaResponse with the generated text in {@code response}
+         * @throws RestClientException if the HTTP call fails
+         */
+        public OllamaResponse generate(String prompt) {
+                String endpoint = ollamaUrl + "/api/chat";
 
-        OllamaRequest request = OllamaRequest.builder()
-                .model(defaultModel)
-                .messages(List.of(
-                        new OllamaRequest.OllamaMessage("system",
-                                "You are a knowledge classification system. " +
-                                        "Respond ONLY with valid JSON, no additional text."),
-                        new OllamaRequest.OllamaMessage("user", prompt)))
-                .stream(false)
-                .format("json")
-                .build();
+                OllamaRequest request = OllamaRequest.builder()
+                                .model(defaultModel)
+                                .messages(List.of(
+                                                new OllamaRequest.OllamaMessage("system",
+                                                                "You are a knowledge classification system. " +
+                                                                                "Respond ONLY with valid JSON, no additional text."),
+                                                new OllamaRequest.OllamaMessage("user", prompt)))
+                                .stream(false)
+                                .format("json")
+                                .build();
 
-        log.debug("Calling Ollama /api/chat at {} with model '{}'", endpoint, defaultModel);
+                log.debug("Calling Ollama /api/chat at {} with model '{}'", endpoint, defaultModel);
 
-        OllamaResponse response = restTemplate.postForObject(endpoint, request, OllamaResponse.class);
+                OllamaResponse response = restTemplate.postForObject(endpoint, request, OllamaResponse.class);
 
-        if (response == null) {
-            throw new IllegalStateException("Ollama returned a null response");
+                if (response == null) {
+                        throw new IllegalStateException("Ollama returned a null response");
+                }
+
+                log.debug("Ollama done={}, content length={}", response.isDone(),
+                                response.getResponse() != null ? response.getResponse().length() : 0);
+
+                return response;
         }
 
-        log.debug("Ollama done={}, content length={}", response.isDone(),
-                response.getResponse() != null ? response.getResponse().length() : 0);
+        /**
+         * Sends a prompt to Ollama with a custom system message and returns free-form
+         * text
+         * (no JSON format constraint). Useful for summaries, explanations, etc.
+         *
+         * @param systemPrompt the system-level instruction
+         * @param userPrompt   the user-level content / question
+         * @return OllamaResponse with the generated text in {@code response}
+         * @throws RestClientException if the HTTP call fails
+         */
+        public OllamaResponse generateText(String systemPrompt, String userPrompt) {
+                String endpoint = ollamaUrl + "/api/chat";
 
-        return response;
-    }
+                OllamaRequest request = OllamaRequest.builder()
+                                .model(defaultModel)
+                                .messages(List.of(
+                                                new OllamaRequest.OllamaMessage("system", systemPrompt),
+                                                new OllamaRequest.OllamaMessage("user", userPrompt)))
+                                .stream(false)
+                                .format(null) // free-form text, no JSON constraint
+                                .build();
+
+                log.debug("Calling Ollama /api/chat (text mode) at {} with model '{}'", endpoint, defaultModel);
+
+                OllamaResponse response = restTemplate.postForObject(endpoint, request, OllamaResponse.class);
+
+                if (response == null) {
+                        throw new IllegalStateException("Ollama returned a null response");
+                }
+
+                log.debug("Ollama text-mode done={}, content length={}", response.isDone(),
+                                response.getResponse() != null ? response.getResponse().length() : 0);
+
+                return response;
+        }
 }

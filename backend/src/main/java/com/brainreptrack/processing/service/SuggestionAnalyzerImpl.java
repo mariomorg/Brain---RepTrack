@@ -47,6 +47,8 @@ public class SuggestionAnalyzerImpl implements SuggestionAnalyzer {
         all.add(evaluateOcr(item));
         all.add(evaluateUrlExtract(item));
         all.add(evaluateRelations(item));
+        all.add(evaluateCodeFormat(item));
+        all.add(evaluateVideoExtract(item));
 
         // Filter by minimum confidence and sort descending
         List<SuggestionDto> result = all.stream()
@@ -105,7 +107,10 @@ public class SuggestionAnalyzerImpl implements SuggestionAnalyzer {
 
     private SuggestionDto evaluateTranscribe(InboxItem item) {
         String type = safeType(item);
-        double confidence = "AUDIO".equalsIgnoreCase(type) ? 95 : 0;
+        double confidence = 0;
+        if ("AUDIO".equalsIgnoreCase(type) || "VOICE_NOTE".equalsIgnoreCase(type)) {
+            confidence = 95;
+        }
 
         return SuggestionDto.builder()
                 .type(SuggestionType.TRANSCRIBE)
@@ -138,11 +143,14 @@ public class SuggestionAnalyzerImpl implements SuggestionAnalyzer {
 
     private SuggestionDto evaluateUrlExtract(InboxItem item) {
         String text = safeText(item).trim();
+        String type = safeType(item);
         double confidence = 0;
 
         if (isUrl(text)) {
             confidence = 95;
-        } else if ("LINK".equalsIgnoreCase(safeType(item))) {
+        } else if ("LINK".equalsIgnoreCase(type) || "ARTICLE_REF".equalsIgnoreCase(type)) {
+            confidence = 90;
+        } else if ("VIDEO_REF".equalsIgnoreCase(type)) {
             confidence = 85;
         } else if (text.contains("http://") || text.contains("https://")) {
             confidence = 50;
@@ -172,6 +180,45 @@ public class SuggestionAnalyzerImpl implements SuggestionAnalyzer {
                 .type(SuggestionType.RELATIONS)
                 .label("Buscar relaciones")
                 .description("Buscar notas relacionadas en el Cerebro para crear vínculos Zettelkasten.")
+                .confidence(confidence)
+                .actionable(false)
+                .build();
+    }
+
+    // ── New evaluators for expanded content types ────────────────────
+
+    private SuggestionDto evaluateCodeFormat(InboxItem item) {
+        String type = safeType(item);
+        String text = safeText(item);
+        double confidence = 0;
+
+        if ("CODE".equalsIgnoreCase(type)) {
+            confidence = 90;
+        } else if (text.contains("```") || text.contains("function ") || text.contains("class ")) {
+            confidence = 45;
+        }
+
+        return SuggestionDto.builder()
+                .type(SuggestionType.CODE_FORMAT)
+                .label("Formatear código")
+                .description("Se detectó código fuente — ¿formatear y detectar lenguaje?")
+                .confidence(confidence)
+                .actionable(false)
+                .build();
+    }
+
+    private SuggestionDto evaluateVideoExtract(InboxItem item) {
+        String type = safeType(item);
+        double confidence = 0;
+
+        if ("VIDEO_REF".equalsIgnoreCase(type)) {
+            confidence = 90;
+        }
+
+        return SuggestionDto.builder()
+                .type(SuggestionType.VIDEO_EXTRACT)
+                .label("Extraer info del vídeo")
+                .description("Se detectó una referencia a vídeo — ¿extraer título y descripción?")
                 .confidence(confidence)
                 .actionable(false)
                 .build();
