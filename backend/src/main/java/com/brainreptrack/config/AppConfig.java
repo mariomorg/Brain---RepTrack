@@ -37,6 +37,7 @@ public class AppConfig {
 
                 registry.addMapping("/api/**")
                         .allowedOriginPatterns(allPatterns)
+                        .allowedOrigins(allowedOrigins)
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true);
