@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import Layout from './shared/components/Layout';
 import InboxPage from './features/inbox/components/InboxPage';
 import CerebroPage from './features/cerebro/components/CerebroPage';
+import ResourceDetailPage from './pages/ResourceDetailPage';
 
 // Nuevo: MapPage
 import { MapCanvas } from './components/MapCanvas';
@@ -196,7 +197,8 @@ function App() {
           <Route path="/mapa" element={<MapPage />} />
           <Route path="/configuracion" element={<ComingSoon title="Configuración" />} />
           <Route path="/perfil" element={<ComingSoon title="Perfil" />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/recurso/:id" element={<ResourceDetailPage />} />
+          <Route path="*" element={<Navigate to="/inbox" replace />} />
         </Routes>
       </Layout>
     </BrowserRouter>

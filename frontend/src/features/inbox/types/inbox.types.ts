@@ -1,4 +1,4 @@
-export type InboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'ARCHIVED';
+export type InboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'AWAITING_APPROVAL' | 'REJECTED' | 'ARCHIVED';
 
 export type InboxDetectedType =
     | 'TEXT'
@@ -32,4 +32,47 @@ export interface UpdateInboxItemRequest {
     proposalsJson?: string;
     finalJson?: string;
     outputPath?: string;
+}
+
+/* ─── Suggestion types returned by the backend ─── */
+
+export type SuggestionType =
+    | 'SUMMARIZE'
+    | 'REFORMULATE'
+    | 'TRANSCRIBE'
+    | 'OCR'
+    | 'URL_EXTRACT'
+    | 'RELATIONS';
+
+export interface SuggestionDto {
+    type: SuggestionType;
+    label: string;
+    description: string;
+    confidence: number;
+    actionable: boolean;
+}
+
+/* ─── Classification structures (mirroring backend AiAnalysisResult) ─── */
+
+export interface ClasificacionItem {
+    nivel: number;
+    etiqueta: string;
+    confianza: number;
+}
+
+export interface AiClassification {
+    clasificacion?: ClasificacionItem[];
+    clasificacion_final_valida?: boolean;
+    motivo?: string;
+    rationale?: string;
+    paths?: Array<{ path: string; confidence: number }>;
+}
+
+/* ─── Combined result from POST /procesar ─── */
+
+export interface ProcessResult {
+    item: InboxItem;
+    classification: AiClassification | null;
+    markdown: string;
+    suggestions: SuggestionDto[];
 }

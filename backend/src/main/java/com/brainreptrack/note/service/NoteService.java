@@ -25,4 +25,7 @@ public interface NoteService {
     List<NoteResponseDto> findByTag(String tagName);
 
     List<String> getAllTags();
+
+    // 👇 ESTE iba fuera, ahora está bien
+    List<NoteResponseDto> findSimilares(UUID id);
 }

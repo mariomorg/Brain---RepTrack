@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInbox } from '../hooks/useInbox';
-import { InboxItem } from '../types/inbox.types';
+import { InboxItem, SuggestionDto, ProcessResult } from '../types/inbox.types';
 import { TagChip } from '@shared/components/TagChip';
 import { noteService } from '@features/cerebro/services/noteService';
 import { Note } from '@features/cerebro/types/note.types';
@@ -71,6 +71,44 @@ const StopIcon = () => (
         <rect x="4" y="4" width="16" height="16" rx="2" />
     </svg>
 );
+const CheckIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12" />
+    </svg>
+);
+const MarkdownIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="8" y1="13" x2="16" y2="13" />
+        <line x1="8" y1="17" x2="16" y2="17" />
+    </svg>
+);
+const RefreshIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 4 23 10 17 10" />
+        <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+    </svg>
+);
+const SparkleIcon = () => (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+    </svg>
+);
+const EditIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+);
+const SummarizeIcon = () => (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" />
+        <line x1="8" y1="18" x2="21" y2="18" />
+        <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" />
+        <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+);
 
 /* ─────────────────────────── Types ─────────────────────────── */
 interface AttachedFile {
@@ -83,6 +121,11 @@ interface AttachedFile {
 /* ─────────────────────────── Helpers ─────────────────────────── */
 function isUrl(text: string): boolean {
     try { new URL(text); return true; } catch { return false; }
+}
+
+/** Module-level helper keeps nesting depth within limits. */
+function applyImagePreview(id: string, url: string, prev: AttachedFile[]): AttachedFile[] {
+    return prev.map(a => (a.id === id ? { ...a, preview: url } : a));
 }
 
 function detectType(text: string, attachments: AttachedFile[]): string {
@@ -115,7 +158,7 @@ function generateId(): string {
 }
 
 /* ─────────────────────────── Link Modal ─────────────────────────── */
-function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: string) => void; onClose: () => void }) {
+function LinkModal({ onInsert, onClose }: Readonly<{ onInsert: (url: string, label?: string) => void; onClose: () => void }>) {
     const [url, setUrl] = useState('');
     const [label, setLabel] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -129,8 +172,15 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
     };
 
     return (
-        <div className="modal-backdrop" onClick={onClose}>
-            <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div className="modal-backdrop">
+            {/* Native button covers the backdrop – satisfies a11y, handles backdrop-click-to-close */}
+            <button
+                className="modal-backdrop__close"
+                aria-label="Cerrar"
+                tabIndex={-1}
+                onClick={onClose}
+            />
+            <div className="modal-box">
                 <div className="modal-title"><LinkIcon /> Insertar enlace</div>
                 <input
                     ref={inputRef}
@@ -138,14 +188,14 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
                     placeholder="https://ejemplo.com"
                     value={url}
                     onChange={e => setUrl(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleInsert(); if (e.key === 'Escape') onClose(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { handleInsert(); } else if (e.key === 'Escape') { onClose(); } }}
                 />
                 <input
                     className="modal-input"
                     placeholder="Texto del enlace (opcional)"
                     value={label}
                     onChange={e => setLabel(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleInsert(); if (e.key === 'Escape') onClose(); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { handleInsert(); } else if (e.key === 'Escape') { onClose(); } }}
                 />
                 <div className="modal-actions">
                     <button className="modal-btn modal-btn--cancel" onClick={onClose}>Cancelar</button>
@@ -157,7 +207,7 @@ function LinkModal({ onInsert, onClose }: { onInsert: (url: string, label?: stri
 }
 
 /* ─────────────────────────── Brain mini card ─────────────────────────── */
-function BrainMiniCard({ note }: { note: Note }) {
+function BrainMiniCard({ note }: Readonly<{ note: Note }>) {
     return (
         <div className="brain-mini-card">
             <div className="brain-mini-card__type">
@@ -170,7 +220,7 @@ function BrainMiniCard({ note }: { note: Note }) {
             {note.summary && <div className="brain-mini-card__summary">{note.summary}</div>}
             {note.tags && note.tags.length > 0 && (
                 <div className="brain-mini-card__tags">
-                    {note.tags.slice(0, 3).map((t) => <TagChip key={t} tag={t} />)}
+                    {note.tags.slice(0, 3).map((t) => <TagChip key={t.name} tag={t.name} />)}
                 </div>
             )}
         </div>
@@ -178,16 +228,18 @@ function BrainMiniCard({ note }: { note: Note }) {
 }
 
 /* ─────────────────────────── Attachment preview ─────────────────────────── */
-function AttachmentPreview({ attachment, onRemove }: { attachment: AttachedFile; onRemove: () => void }) {
+function AttachmentPreview({ attachment, onRemove }: Readonly<{ attachment: AttachedFile; onRemove: () => void }>) {
+    let preview: React.ReactNode;
+    if (attachment.type === 'image' && attachment.preview) {
+        preview = <img src={attachment.preview} alt={attachment.file.name} className="attachment-chip__thumb" />;
+    } else if (attachment.type === 'audio') {
+        preview = <span className="attachment-chip__icon"><MicIcon /></span>;
+    } else {
+        preview = <span className="attachment-chip__icon"><FileIcon /></span>;
+    }
     return (
         <div className="attachment-chip">
-            {attachment.type === 'image' && attachment.preview ? (
-                <img src={attachment.preview} alt={attachment.file.name} className="attachment-chip__thumb" />
-            ) : attachment.type === 'audio' ? (
-                <span className="attachment-chip__icon"><MicIcon /></span>
-            ) : (
-                <span className="attachment-chip__icon"><FileIcon /></span>
-            )}
+            {preview}
             <span className="attachment-chip__name">{attachment.file.name}</span>
             <button className="attachment-chip__remove" onClick={onRemove} title="Quitar">
                 <XIcon />
@@ -196,9 +248,273 @@ function AttachmentPreview({ attachment, onRemove }: { attachment: AttachedFile;
     );
 }
 
+/* ─────────────────────────── AI Proposal helpers ─────────────────────────── */
+interface AiProposal {
+    clasificacion?: Array<{ nivel: number; etiqueta: string; confianza: number }>;
+    clasificacion_final_valida?: boolean;
+    motivo?: string;
+    rationale?: string;
+    paths?: Array<{ path: string; confidence: number }>;
+}
+
+function parseProposal(json: string | null): AiProposal | null {
+    if (!json) return null;
+    try { return JSON.parse(json); } catch { return null; }
+}
+
+/* ─────────────────────────── Smart Suggestions (server-side) ─────────────────────────── */
+function SmartSuggestions({ suggestions, onAction }: Readonly<{
+    suggestions: SuggestionDto[];
+    onAction: (suggestion: SuggestionDto) => void;
+}>) {
+    if (suggestions.length === 0) return null;
+
+    const iconForType = (type: string): React.ReactNode => {
+        switch (type) {
+            case 'SUMMARIZE': return <SummarizeIcon />;
+            case 'REFORMULATE': return <EditIcon />;
+            case 'TRANSCRIBE': return <MicIcon />;
+            case 'OCR': return <FileIcon />;
+            case 'URL_EXTRACT': return <LinkIcon />;
+            case 'RELATIONS': return <BrainIcon />;
+            default: return <SparkleIcon />;
+        }
+    };
+
+    return (
+        <div className="smart-suggestions">
+            <div className="smart-suggestions__label"><SparkleIcon /> Sugerencias inteligentes</div>
+            <div className="smart-suggestions__chips">
+                {suggestions.map(s => (
+                    <button
+                        key={s.type}
+                        className={`suggestion-chip${s.actionable ? '' : ' suggestion-chip--disabled'}`}
+                        onClick={() => onAction(s)}
+                        title={s.description}
+                    >
+                        {iconForType(s.type)} {s.label}
+                        {!s.actionable && <span className="suggestion-chip__badge">próx.</span>}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/* ─────────────────────────── Card for AWAITING_APPROVAL items — "Procesar" button ─────────────────────────── */
+function PendingApprovalCard({
+    item,
+    onProcesar,
+    onReprocess,
+    onRemove,
+    processing,
+}: Readonly<{
+    item: InboxItem;
+    onProcesar: () => void;
+    onReprocess: () => void;
+    onRemove: () => void;
+    processing: boolean;
+}>) {
+    const proposal = parseProposal(item.proposalsJson);
+    const clasif = proposal?.clasificacion ?? [];
+    const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
+    const pathLabel = clasif.map(c => c.etiqueta).join(' → ');
+    const minConf = clasif.length > 0 ? Math.min(...clasif.map(c => c.confianza)) : null;
+
+    // Legacy paths fallback
+    const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
+
+    return (
+        <div className="inbox-item-card inbox-item-card--approval">
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                    <div className="inbox-item__type-badge" style={{ marginBottom: 4 }}>
+                        <ExtIcon />
+                        {typeLabelForItem(item)}
+                    </div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                </div>
+                <button
+                    className="capture-toolbar-btn"
+                    title="Eliminar"
+                    onClick={onRemove}
+                    style={{ color: '#EF4444', flexShrink: 0 }}
+                >
+                    <TrashIcon />
+                </button>
+            </div>
+
+            {/* AI classification result */}
+            <div className="ai-proposal-box">
+                <div className="ai-proposal-box__label">
+                    <BrainIcon /> Propuesta de la IA
+                    {minConf !== null && (
+                        <span className="ai-proposal-box__conf">{minConf}% conf.</span>
+                    )}
+                </div>
+
+                {pathLabel ? (
+                    <div className="ai-proposal-box__path">
+                        {clasif.filter(c => c.etiqueta).map((c, i) => (
+                            <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                <TagChip tag={c.etiqueta} />
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
+                {!pathLabel && legacyPath ? (
+                    <div className="ai-proposal-box__path">
+                        {legacyPath.split('/').filter(Boolean).map((seg, i) => (
+                            <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                <TagChip tag={seg} />
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
+                {!pathLabel && !legacyPath ? (
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+                        Sin clasificación definida
+                    </div>
+                ) : null}
+
+                {motivo && (
+                    <div className="ai-proposal-box__motivo">{motivo}</div>
+                )}
+            </div>
+
+            {/* Action buttons — single "Procesar" replaces approve/reject */}
+            <div className="ai-proposal-actions">
+                <button
+                    className="ai-action-btn ai-action-btn--procesar"
+                    onClick={onProcesar}
+                    disabled={processing}
+                >
+                    {processing ? (
+                        <><BrainIcon /> Procesando…</>
+                    ) : (
+                        <><CheckIcon /> Procesar</>
+                    )}
+                </button>
+            </div>
+            <div style={{ marginTop: 6 }}>
+                <button className="ai-action-btn ai-action-btn--reprocess" style={{ width: '100%' }} onClick={onReprocess} disabled={processing}>
+                    <RefreshIcon /> Reprocesar
+                </button>
+            </div>
+        </div>
+    );
+}
+
+/* ─────────────────────────── Processed card (shows result + suggestions) ─────────────────────────── */
+function ProcessedCard({
+    item,
+    suggestions,
+    onReprocess,
+    onCreateMarkdown,
+    onRemove,
+    onSuggestion,
+    creatingMarkdown,
+}: Readonly<{
+    item: InboxItem;
+    suggestions: SuggestionDto[];
+    onReprocess: () => void;
+    onCreateMarkdown: () => void;
+    onRemove: () => void;
+    onSuggestion: (suggestion: SuggestionDto) => void;
+    creatingMarkdown: boolean;
+}>) {
+    const proposal = parseProposal(item.proposalsJson);
+    const clasif = proposal?.clasificacion ?? [];
+    const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
+    const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
+    const hasSavedFile = !!item.outputPath;
+
+    return (
+        <div className="inbox-item-card inbox-item-card--processed">
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 1 }}>
+                    <div className="inbox-item__type-badge" style={{ marginBottom: 4 }}>
+                        <ExtIcon /> {typeLabelForItem(item)}
+                        <span className="processed-badge">PROCESADO</span>
+                    </div>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{item.rawText}</div>
+                    <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                </div>
+                <button className="capture-toolbar-btn" title="Eliminar" onClick={onRemove} style={{ color: '#EF4444', flexShrink: 0 }}>
+                    <TrashIcon />
+                </button>
+            </div>
+
+            {/* Classification result */}
+            {(clasif.length > 0 || legacyPath) && (
+                <div className="ai-proposal-box" style={{ marginBottom: 8 }}>
+                    <div className="ai-proposal-box__label"><BrainIcon /> Clasificación aprobada</div>
+                    {clasif.length > 0 && (
+                        <div className="ai-proposal-box__path">
+                            {clasif.filter(c => c.etiqueta).map((c, i) => (
+                                <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                    <TagChip tag={c.etiqueta} />
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {clasif.length === 0 && legacyPath && (
+                        <div className="ai-proposal-box__path">
+                            {legacyPath.split('/').filter(Boolean).map((seg, i) => (
+                                <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                    {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                    <TagChip tag={seg} />
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
+                </div>
+            )}
+
+            {/* Saved file indicator */}
+            {hasSavedFile && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '6px 10px', marginBottom: 8,
+                    background: 'rgba(34,197,94,0.1)', borderRadius: 8,
+                    fontSize: 12, color: '#22c55e',
+                }}>
+                    <MarkdownIcon /> Archivo guardado: <span style={{ color: 'var(--color-text)', wordBreak: 'break-all' }}>{item.outputPath}</span>
+                </div>
+            )}
+
+            {/* Smart suggestions (server-side) */}
+            <SmartSuggestions suggestions={suggestions} onAction={onSuggestion} />
+
+            {/* Actions — no approve/reject */}
+            <div className="processed-actions">
+                <button
+                    className="ai-action-btn ai-action-btn--markdown"
+                    onClick={onCreateMarkdown}
+                    disabled={creatingMarkdown}
+                >
+                    <MarkdownIcon /> {(() => {
+                        if (creatingMarkdown) return 'Generando…';
+                        if (hasSavedFile) return 'Regenerar Markdown';
+                        return 'Crear Markdown';
+                    })()}
+                </button>
+                <button className="ai-action-btn ai-action-btn--reprocess" onClick={onReprocess}>
+                    <RefreshIcon /> Reprocesar
+                </button>
+            </div>
+        </div>
+    );
+}
+
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, pendingCount, loading, submitting, capture, remove } = useInbox();
+    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, remove, procesar, createMarkdown, reprocess } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);
@@ -213,6 +529,12 @@ export default function InboxPage() {
     const [recording, setRecording] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+    // Track process results (suggestions) per-item by id
+    const [processResults, setProcessResults] = useState<Record<string, ProcessResult>>({});
+    // Track which items are currently being "procesado"
+    const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+    // Track which items are currently generating markdown
+    const [markdownCreatingIds, setMarkdownCreatingIds] = useState<Set<string>>(new Set());
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -242,24 +564,19 @@ export default function InboxPage() {
 
     /* Avanzar: crossfade slot a slot */
     const advanceCarousel = useCallback((nextIdx?: number) => {
-        const next = nextIdx !== undefined ? nextIdx : (carouselIndex + 1) % recentNotes.length;
-        // Fade out slot 0
+        const next = nextIdx ?? (carouselIndex + 1) % recentNotes.length;
         setSlotVisible([false, true, true]);
-        setTimeout(() => {
-            // Cambiar contenido mientras slot 0 está invisible
+        const applyNewSlots = () => {
             setSlotNotes([
                 recentNotes[next] ?? null,
                 recentNotes[(next + 1) % recentNotes.length] ?? null,
                 recentNotes[(next + 2) % recentNotes.length] ?? null,
             ]);
             setCarouselIndex(next);
-            // Esperar un frame para que React pinte el nuevo contenido antes del fade in
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setSlotVisible([true, true, true]);
-                });
-            });
-        }, 500);
+            // 16ms = one animation frame; lets React paint the new content before fading in
+            setTimeout(() => setSlotVisible([true, true, true]), 16);
+        };
+        setTimeout(applyNewSlots, 500);
     }, [carouselIndex, recentNotes]);
 
     /* Carrusel automático */
@@ -282,28 +599,30 @@ export default function InboxPage() {
     const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type });
 
     /* ── File helpers ── */
+    const readImagePreview = useCallback((id: string, file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const url = e.target?.result as string;
+            setAttachments(prev => applyImagePreview(id, url, prev));
+        };
+        reader.readAsDataURL(file);
+    }, []);
+
     const addFiles = useCallback((files: File[]) => {
         const newAttachments: AttachedFile[] = [];
         for (const file of files) {
             const isImage = file.type.startsWith('image/');
             const isAudio = file.type.startsWith('audio/');
             const id = generateId();
-            const att: AttachedFile = {
-                id,
-                file,
-                type: isImage ? 'image' : isAudio ? 'audio' : 'file',
-            };
-            if (isImage) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    setAttachments(prev => prev.map(a => a.id === id ? { ...a, preview: e.target?.result as string } : a));
-                };
-                reader.readAsDataURL(file);
-            }
+            let attType: 'image' | 'file' | 'audio' = 'file';
+            if (isImage) { attType = 'image'; }
+            else if (isAudio) { attType = 'audio'; }
+            const att: AttachedFile = { id, file, type: attType };
+            if (isImage) { readImagePreview(id, file); }
             newAttachments.push(att);
         }
         setAttachments(prev => [...prev, ...newAttachments]);
-    }, []);
+    }, [readImagePreview]);
 
     const removeAttachment = (id: string) => setAttachments(prev => prev.filter(a => a.id !== id));
 
@@ -390,6 +709,60 @@ export default function InboxPage() {
 
     const handleMicClick = () => recording ? stopRecording() : startRecording();
 
+    /* ── Create Markdown (saves file to disk) ── */
+    const handleCreateMarkdown = async (id: string) => {
+        setMarkdownCreatingIds(prev => new Set(prev).add(id));
+        try {
+            const filePath = await createMarkdown(id);
+            if (filePath) {
+                showToast(`Markdown guardado: ${filePath}`);
+            } else {
+                showToast('Markdown generado (sin ruta de archivo)');
+            }
+        } catch {
+            showToast('Error al generar el Markdown', 'error');
+        } finally {
+            setMarkdownCreatingIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        }
+    };
+
+    /* ── Smart suggestion action (server-side) ── */
+    const handleSuggestion = (suggestion: SuggestionDto) => {
+        if (suggestion.actionable) {
+            showToast(`Ejecutando: ${suggestion.label}…`);
+            // Future: dispatch actual action based on suggestion.type
+        } else {
+            showToast(`${suggestion.label} — próximamente disponible.`);
+        }
+    };
+
+    /* ── Procesar (unified action — replaces approve/reject) ── */
+    const handleProcesar = async (id: string) => {
+        setProcessingIds(prev => new Set(prev).add(id));
+        try {
+            const result = await procesar(id);
+            setProcessResults(prev => ({ ...prev, [id]: result }));
+            // The markdown file is auto-saved on the backend
+            if (result.item?.outputPath) {
+                showToast(`Procesado y guardado: ${result.item.outputPath}`);
+            } else {
+                showToast('Elemento procesado con éxito');
+            }
+        } catch {
+            showToast('Error al procesar el elemento', 'error');
+        } finally {
+            setProcessingIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        }
+    };
+
     /* ── Send ── */
     const handleSend = async () => {
         const trimmed = text.trim();
@@ -431,7 +804,11 @@ export default function InboxPage() {
                     position: fixed; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(4px);
                     z-index: 1000; display: flex; align-items: center; justify-content: center;
                 }
+                .modal-backdrop__close {
+                    position: absolute; inset: 0; background: transparent; border: none; cursor: default;
+                }
                 .modal-box {
+                    position: relative; z-index: 1;
                     background: var(--color-bg-card, #1a1a2e); border: 1px solid var(--color-border, #2d2d4a);
                     border-radius: 12px; padding: 24px; width: 400px; max-width: 92vw;
                     display: flex; flex-direction: column; gap: 12px;
@@ -547,6 +924,129 @@ export default function InboxPage() {
                     transform: scale(0.94);
                     transform-origin: top center;
                 }
+
+                /* ── AI Approval card ── */
+                .inbox-item-card--approval {
+                    border-color: rgba(99,102,241,.35);
+                    background: linear-gradient(135deg, rgba(99,102,241,.05) 0%, transparent 100%);
+                }
+                .ai-proposal-box {
+                    background: var(--color-bg, #11111f);
+                    border: 1px solid var(--color-border, #2d2d4a);
+                    border-radius: 8px;
+                    padding: 10px 12px;
+                    margin-bottom: 10px;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                .ai-proposal-box__label {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: .05em;
+                    color: var(--color-accent, #6366f1);
+                }
+                .ai-proposal-box__conf {
+                    margin-left: auto;
+                    font-size: 11px;
+                    font-weight: 500;
+                    color: var(--color-text-muted, #94a3b8);
+                }
+                .ai-proposal-box__path {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: 4px;
+                }
+                .ai-proposal-box__motivo {
+                    font-size: 12px;
+                    color: var(--color-text-muted, #94a3b8);
+                    font-style: italic;
+                    line-height: 1.4;
+                }
+                .ai-proposal-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                .ai-action-btn {
+                    flex: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 6px;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    border: none;
+                    transition: opacity .15s, transform .1s;
+                }
+                .ai-action-btn:hover { opacity: .85; transform: translateY(-1px); }
+                .ai-action-btn:active { transform: translateY(0); }
+                .ai-action-btn--approve { background: #059669; color: #fff; }
+                .ai-action-btn--reject  { background: rgba(239,68,68,.15); color: #ef4444; border: 1px solid rgba(239,68,68,.3); }
+                .ai-action-btn--reprocess { background: rgba(99,102,241,.12); color: var(--color-accent, #6366f1); border: 1px solid rgba(99,102,241,.25); }
+                .ai-action-btn--markdown { background: #0891b2; color: #fff; }
+                .ai-action-btn--procesar { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #fff; flex: 1; }
+                .ai-action-btn--procesar:disabled { opacity: .6; cursor: wait; }
+
+                /* ── Processed card ── */
+                .inbox-item-card--processed {
+                    border-color: rgba(16,185,129,.3);
+                    background: linear-gradient(135deg, rgba(16,185,129,.04) 0%, transparent 100%);
+                }
+                .processed-badge {
+                    display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px;
+                    font-size: 9px; font-weight: 700; letter-spacing: .06em;
+                    background: rgba(16,185,129,.15); color: #10b981; margin-left: 6px;
+                }
+                .processed-actions {
+                    display: flex; gap: 8px; margin-top: 8px;
+                }
+
+                /* ── Smart suggestions ── */
+                .smart-suggestions {
+                    margin: 8px 0 4px;
+                }
+                .smart-suggestions__label {
+                    display: flex; align-items: center; gap: 5px;
+                    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+                    color: var(--color-text-muted, #94a3b8); margin-bottom: 6px;
+                }
+                .smart-suggestions__chips {
+                    display: flex; flex-wrap: wrap; gap: 5px;
+                }
+                .suggestion-chip {
+                    display: inline-flex; align-items: center; gap: 5px;
+                    padding: 4px 10px; border-radius: 20px; font-size: 11px; cursor: pointer;
+                    background: var(--color-bg-hover, rgba(99,102,241,.07));
+                    border: 1px solid var(--color-border, #2d2d4a);
+                    color: var(--color-text, #e2e8f0);
+                    transition: background .15s, border-color .15s;
+                    text-align: left;
+                }
+                .suggestion-chip:hover { background: rgba(99,102,241,.16); border-color: rgba(99,102,241,.4); }
+                .suggestion-chip--disabled { opacity: .65; cursor: default; }
+                .suggestion-chip--disabled:hover { background: var(--color-bg-hover, rgba(99,102,241,.07)); border-color: var(--color-border, #2d2d4a); }
+                .suggestion-chip__badge {
+                    font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 4px;
+                    background: rgba(99,102,241,.15); color: var(--color-accent, #6366f1);
+                    margin-left: 2px;
+                }
+
+                /* ── Markdown preview ── */
+                .markdown-preview {
+                    flex: 1; overflow-y: auto; margin: 12px 0;
+                    background: var(--color-bg, #11111f); border: 1px solid var(--color-border, #2d2d4a);
+                    border-radius: 8px; padding: 16px; font-size: 13px; line-height: 1.6;
+                    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+                    color: var(--color-text, #e2e8f0); white-space: pre-wrap; word-break: break-word;
+                }
             `}</style>
 
             {/* Toast */}
@@ -570,7 +1070,8 @@ export default function InboxPage() {
                     </div>
 
                     {/* Capture box */}
-                    <div
+                    <section
+                        aria-label="Área de captura de contenido"
                         className={`capture-box${isDragging ? ' capture-box--dragging' : ''}`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
@@ -599,7 +1100,7 @@ export default function InboxPage() {
                         )}
 
                         <div className="capture-box__toolbar">
-                        
+
 
                             {/* File button */}
                             <button
@@ -650,54 +1151,117 @@ export default function InboxPage() {
                         <div className="capture-box__hint">
                             Enter para guardar&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar imágenes&nbsp;•&nbsp;Shift+Enter para nueva línea
                         </div>
-                    </div>
+                    </section>
 
-                    {/* Pending section */}
                     <div className="pending-section__header">
-                        <span className="pending-section__title">Pendientes de procesar</span>
+                        <span className="pending-section__title">Actividad del inbox</span>
                         <span className="pending-count-badge">{pendingCount} items</span>
                     </div>
 
-                    {loading ? (
-                        <div className="loading-spinner">Cargando…</div>
-                    ) : pendingItems.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="empty-state__icon">✅</div>
-                            <p className="empty-state__text">Sin elementos pendientes. ¡Todo procesado!</p>
-                        </div>
-                    ) : (
-                        <div className="inbox-items-list">
-                            {pendingItems.map(item => (
-                                <div key={item.id} className="inbox-item-card">
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                                        <div style={{ flex: 1 }}>
-                                            <div className="inbox-item__type-badge">
-                                                <ExtIcon />
-                                                {typeLabelForItem(item)}
-                                            </div>
-                                            <div className="inbox-item__text">{item.rawText}</div>
-                                            {isUrl(item.rawText.trim()) && (
-                                                <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
-                                                    {item.rawText.trim()}
-                                                </a>
-                                            )}
-                                            <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 4 }}>
-                                            <button
-                                                className="capture-toolbar-btn"
-                                                title="Eliminar"
-                                                onClick={() => remove(item.id)}
-                                                style={{ color: '#EF4444' }}
-                                            >
-                                                <TrashIcon />
-                                            </button>
-                                        </div>
-                                    </div>
+                    {(() => {
+                        if (loading) {
+                            return <div className="loading-spinner">Cargando…</div>;
+                        }
+                        if (pendingItems.length === 0 && processedItems.length === 0) {
+                            return (
+                                <div className="empty-state">
+                                    <div className="empty-state__icon">✅</div>
+                                    <p className="empty-state__text">Sin elementos pendientes. ¡Todo procesado!</p>
                                 </div>
-                            ))}
-                        </div>
-                    )}
+                            );
+                        }
+                        const awaitingItems = pendingItems.filter(i => i.status === 'AWAITING_APPROVAL');
+                        const processingItems = pendingItems.filter(i => i.status !== 'AWAITING_APPROVAL');
+                        return (
+                            <>
+                                {/* ── Items awaiting user action — "Procesar" button ── */}
+                                {awaitingItems.length > 0 && (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                            <BrainIcon /> Listos para procesar
+                                        </div>
+                                        <div className="inbox-items-list" style={{ marginBottom: 20 }}>
+                                            {awaitingItems.map(item => (
+                                                <PendingApprovalCard
+                                                    key={item.id}
+                                                    item={item}
+                                                    onProcesar={() => handleProcesar(item.id)}
+                                                    onReprocess={() => { void reprocess(item.id); }}
+                                                    onRemove={() => remove(item.id)}
+                                                    processing={processingIds.has(item.id)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ── Items being processed by AI ── */}
+                                {processingItems.length > 0 && (
+                                    <>
+                                        {awaitingItems.length > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                Procesando
+                                            </div>
+                                        )}
+                                        <div className="inbox-items-list">
+                                            {processingItems.map(item => (
+                                                <div key={item.id} className="inbox-item-card">
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div className="inbox-item__type-badge">
+                                                                <ExtIcon />
+                                                                {typeLabelForItem(item)}
+                                                            </div>
+                                                            <div className="inbox-item__text">{item.rawText}</div>
+                                                            {isUrl(item.rawText.trim()) && (
+                                                                <a href={item.rawText.trim()} target="_blank" rel="noopener noreferrer" className="inbox-item__link">
+                                                                    {item.rawText.trim()}
+                                                                </a>
+                                                            )}
+                                                            <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', gap: 4 }}>
+                                                            <button
+                                                                className="capture-toolbar-btn"
+                                                                title="Eliminar"
+                                                                onClick={() => remove(item.id)}
+                                                                style={{ color: '#EF4444' }}
+                                                            >
+                                                                <TrashIcon />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* ── Recently processed (no approve/reject) ── */}
+                                {processedItems.length > 0 && (
+                                    <>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0 8px', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                            <CheckIcon /> Procesados recientemente
+                                        </div>
+                                        <div className="inbox-items-list">
+                                            {processedItems.map(item => (
+                                                <ProcessedCard
+                                                    key={item.id}
+                                                    item={item}
+                                                    suggestions={processResults[item.id]?.suggestions ?? []}
+                                                    onReprocess={() => { void reprocess(item.id); }}
+                                                    onCreateMarkdown={() => handleCreateMarkdown(item.id)}
+                                                    onRemove={() => remove(item.id)}
+                                                    onSuggestion={handleSuggestion}
+                                                    creatingMarkdown={markdownCreatingIds.has(item.id)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
                 </div>
 
                 {/* ── Right sidebar ── */}
@@ -723,9 +1287,9 @@ export default function InboxPage() {
                         <>
                             {/* Dots indicadores */}
                             <div className="carousel-dots">
-                                {recentNotes.map((_, i) => (
+                                {recentNotes.map((note, i) => (
                                     <button
-                                        key={i}
+                                        key={note.id}
                                         className={`carousel-dot${i === carouselIndex ? ' carousel-dot--active' : ''}`}
                                         onClick={() => advanceCarousel(i)}
                                     />
@@ -734,24 +1298,26 @@ export default function InboxPage() {
 
                             {/* Carrusel de tarjetas */}
                             <div className="carousel-stack">
-                                {slotNotes.map((note, offset) => note && (
-                                    <div
-                                        key={offset}
-                                        className={`carousel-card carousel-card--pos${offset}`}
-                                        style={{
-                                            opacity: slotVisible[offset] ? (offset === 0 ? 1 : offset === 1 ? 0.5 : 0.2) : 0,
-                                            cursor: 'pointer',
-                                        }}
-                                        onClick={() => navigate(`/cerebro?search=${encodeURIComponent(note.title)}`)}
-                                    >
-                                        <BrainMiniCard note={note} />
-                                    </div>
-                                ))}
+                                {slotNotes.map((note, offset) => {
+                                    if (!note) return null;
+                                    let slotOpacity = 0;
+                                    if (slotVisible[offset]) {
+                                        if (offset === 0) { slotOpacity = 1; }
+                                        else if (offset === 1) { slotOpacity = 0.5; }
+                                        else { slotOpacity = 0.2; }
+                                    }
+                                    return (
+                                        <button
+                                            key={note.id}
+                                            className={`carousel-card carousel-card--pos${offset}`}
+                                            style={{ opacity: slotOpacity, cursor: 'pointer', display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0 }}
+                                            onClick={() => navigate(`/recurso/${note.id}`)}
+                                        >
+                                            <BrainMiniCard note={note} />
+                                        </button>
+                                    );
+                                })}
                             </div>
-
-                            <span className="see-all-link" onClick={() => navigate('/cerebro')}>
-                                Ver todo el cerebro →
-                            </span>
                         </>
                     )}
                 </aside>

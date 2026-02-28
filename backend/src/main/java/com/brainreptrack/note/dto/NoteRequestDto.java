@@ -20,6 +20,15 @@ public class NoteRequestDto {
 
     private UUID inboxItemId;
 
-    /** Tag names stored directly in note_tags(note_id, tag_name). */
-    private Set<String> tags;
+    /**
+     * AI confidence score (0.0–1.0) from the path proposal that generated this
+     * note.
+     */
+    private Double confidenceScore;
+
+    /**
+     * Tags with optional per-tag confidence level stored in
+     * note_tags(note_id, tag_name, confidence_level).
+     */
+    private Set<NoteTagDto> tags;
 }

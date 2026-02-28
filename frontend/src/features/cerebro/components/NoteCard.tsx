@@ -79,7 +79,7 @@ export function NoteCard({ note }: NoteCardProps) {
             {note.tags && note.tags.length > 0 && (
                 <div className="note-card__tags">
                     {note.tags.map((tag) => (
-                        <TagChip key={tag} tag={tag} />
+                        <TagChip key={tag.name} tag={tag.name} />
                     ))}
                 </div>
             )}

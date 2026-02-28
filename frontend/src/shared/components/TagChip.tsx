@@ -19,11 +19,12 @@ function hashTag(tag: string): number {
 }
 
 interface TagChipProps {
-    tag: string;
+    tag: string | null | undefined;
     onClick?: () => void;
 }
 
 export function TagChip({ tag, onClick }: TagChipProps) {
+    if (!tag) return null;
     const palette = PALETTES[hashTag(tag)];
     // Show only the last segment of the path (e.g. "dev/frontend/react" → "react")
     const rawTag = tag.startsWith('#') ? tag.slice(1) : tag;

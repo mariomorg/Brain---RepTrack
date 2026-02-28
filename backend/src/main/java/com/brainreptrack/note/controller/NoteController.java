@@ -21,8 +21,7 @@ public class NoteController {
     private final NoteService service;
 
     @PostMapping
-    public ResponseEntity<ApiResponse<NoteResponseDto>> create(
-            @Valid @RequestBody NoteRequestDto dto) {
+    public ResponseEntity<ApiResponse<NoteResponseDto>> create(@Valid @RequestBody NoteRequestDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(service.create(dto)));
     }
@@ -43,15 +42,15 @@ public class NoteController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<List<NoteResponseDto>>> search(
-            @RequestParam String q) {
+    public ResponseEntity<ApiResponse<List<NoteResponseDto>>> search(@RequestParam String q) {
         return ResponseEntity.ok(ApiResponse.ok(service.search(q)));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<NoteResponseDto>> update(
             @PathVariable UUID id,
-            @Valid @RequestBody NoteRequestDto dto) {
+            @Valid @RequestBody NoteRequestDto dto
+    ) {
         return ResponseEntity.ok(ApiResponse.ok(service.update(id, dto)));
     }
 
@@ -69,5 +68,10 @@ public class NoteController {
     @GetMapping("/tag/{tagName}")
     public ResponseEntity<ApiResponse<List<NoteResponseDto>>> findByTag(@PathVariable String tagName) {
         return ResponseEntity.ok(ApiResponse.ok(service.findByTag(tagName)));
+    }
+
+    @GetMapping("/{id}/similares")
+    public ResponseEntity<ApiResponse<List<NoteResponseDto>>> findSimilares(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.findSimilares(id)));
     }
 }

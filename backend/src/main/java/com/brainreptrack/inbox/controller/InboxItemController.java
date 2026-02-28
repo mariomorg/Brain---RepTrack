@@ -3,6 +3,7 @@ package com.brainreptrack.inbox.controller;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.service.InboxItemService;
+import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.shared.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -59,5 +60,33 @@ public class InboxItemController {
     @GetMapping("/count/pending")
     public ResponseEntity<ApiResponse<Long>> countPending() {
         return ResponseEntity.ok(ApiResponse.ok(service.countPending()));
+    }
+
+    /**
+     * Manually triggers (re-)processing of an inbox item through the AI.
+     * Useful for retrying failed items or re-analysing existing ones.
+     */
+    @PostMapping("/{id}/process")
+    public ResponseEntity<ApiResponse<InboxItemResponseDto>> process(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.process(id)));
+    }
+
+    /**
+     * Unified "Procesar" — creates Note + generates Markdown + analyzes
+     * suggestions.
+     * Replaces the old approve/reject flow.
+     */
+    @PostMapping("/{id}/procesar")
+    public ResponseEntity<ApiResponse<ProcessResultDto>> processItem(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.processItem(id)));
+    }
+
+    /**
+     * Generates a Markdown document from the item's raw content and AI proposals,
+     * saves it as a .md file on disk, and returns the file path.
+     */
+    @PostMapping("/{id}/create-markdown")
+    public ResponseEntity<ApiResponse<String>> createMarkdown(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(service.createMarkdown(id)));
     }
 }

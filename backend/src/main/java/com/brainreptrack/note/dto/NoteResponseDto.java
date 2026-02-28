@@ -18,6 +18,10 @@ public class NoteResponseDto {
     private String summary;
     private LocalDateTime createdAt;
     private UUID inboxItemId;
-    /** Tag names directly from note_tags.tag_name */
-    private Set<String> tags;
+    private Double confidenceScore;
+    /** Tags from note_tags with optional per-tag confidence level. */
+    private Set<NoteTagDto> tags;
+
+    /** Contenido original del recurso (rawText de InboxItem relacionado). */
+    private String originalContent;
 }

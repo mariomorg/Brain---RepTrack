@@ -17,7 +17,7 @@ frontend/.vite/
 .vscode/
 *.swp
 *.swo
-
+node_modules
 # OS
 .DS_Store
 Thumbs.db
@@ -25,4 +25,3 @@ Thumbs.db
 # Logs
 *.log
 
-*.properties
