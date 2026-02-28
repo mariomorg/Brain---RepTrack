@@ -59,7 +59,7 @@ INSERT INTO notes (id, title, path, type, summary, created_at, inbox_item_id) VA
   -- ── dev/frontend ──────────────────────────────────────────────────────────
   ('10000000-0000-0000-0000-000000000001', 'React 18: Concurrent Rendering',         '/dev/frontend/react',      'LINK', 'Suspense, useTransition, startTransition. Server Components.',          now() - interval '30 days', '00000000-0000-0000-0000-000000000001'),
   ('10000000-0000-0000-0000-000000000002', 'TypeScript: Generics y Utility Types',   '/dev/frontend/typescript', 'TEXT', 'Conditional types, infer, mapped types. Partial, Pick, Omit.',          now() - interval '28 days', '00000000-0000-0000-0000-000000000002'),
-  ('10000000-0000-0000-0000-000000000003', 'Next.js 14: App Router',                 '/dev/frontend/react',      'TEXT', 'Server Components, Streaming SSR, Server Actions.',                      now() - interval '25 days', '00000000-0000-0000-0000-000000000003'),
+  ('10000000-0000-0000-0000-000000000003', 'Next.js 14: App Router',                 '/dev/frontend/react',      'TEXT', 'Server Components, Streaming SSR, Server Actions.',                      now() - interval '25 days', null),
   ('10000000-0000-0000-0000-000000000004', 'Tailwind CSS: sistema de diseño',        '/dev/frontend/css',        'LINK', 'JIT compiler, configuración de tema, responsive, dark mode.',           now() - interval '25 days', '00000000-0000-0000-0000-000000000003'),
   ('10000000-0000-0000-0000-000000000005', 'Zustand: estado global ligero',          '/dev/frontend/react',      'TEXT', 'Stores, slices, persistencia con middleware.',                           now() - interval '22 days', null),
   ('10000000-0000-0000-0000-000000000006', 'CSS Grid y Flexbox avanzado',            '/dev/frontend/css',        'TEXT', 'Grid areas, auto-placement, subgrid. Animaciones CSS.',                 now() - interval '20 days', null),
@@ -187,7 +187,122 @@ INSERT INTO notes (id, title, path, type, summary, created_at, inbox_item_id) VA
 ON CONFLICT (id) DO NOTHING;
 
 -- =========================================================
---  Tags — paths jerárquicos
+--  Tags — registro jerárquico (L0 → L1 → L2, respeta FK parent)
+-- =========================================================
+INSERT INTO tags (name, parent_name) VALUES
+  -- L0
+  ('dev',    NULL), ('ia',     NULL), ('infra',  NULL), ('soft',   NULL),
+  ('cocina', NULL), ('deporte',NULL), ('viajes', NULL), ('salud',  NULL)
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO tags (name, parent_name) VALUES
+  -- L1 dev
+  ('dev/frontend', 'dev'), ('dev/backend', 'dev'), ('dev/database', 'dev'),
+  -- L1 ia
+  ('ia/ml', 'ia'), ('ia/nlp', 'ia'), ('ia/data', 'ia'),
+  -- L1 infra
+  ('infra/devops', 'infra'), ('infra/cloud', 'infra'), ('infra/security', 'infra'),
+  -- L1 soft
+  ('soft/arquitectura', 'soft'), ('soft/testing', 'soft'), ('soft/productividad', 'soft'),
+  -- L1 cocina
+  ('cocina/tecnicas', 'cocina'), ('cocina/reposteria', 'cocina'), ('cocina/mundial', 'cocina'),
+  -- L1 deporte
+  ('deporte/entrenamiento', 'deporte'), ('deporte/nutricion', 'deporte'), ('deporte/mindset', 'deporte'),
+  -- L1 viajes
+  ('viajes/planificacion', 'viajes'), ('viajes/mochilero', 'viajes'), ('viajes/fotos', 'viajes'),
+  -- L1 salud
+  ('salud/mental', 'salud'), ('salud/fisica', 'salud'), ('salud/nutricion', 'salud')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO tags (name, parent_name) VALUES
+  -- L2 dev/frontend
+  ('dev/frontend/react',      'dev/frontend'),
+  ('dev/frontend/typescript', 'dev/frontend'),
+  ('dev/frontend/css',        'dev/frontend'),
+  -- L2 dev/backend
+  ('dev/backend/java',        'dev/backend'),
+  ('dev/backend/python',      'dev/backend'),
+  ('dev/backend/api',         'dev/backend'),
+  -- L2 dev/database
+  ('dev/database/postgresql', 'dev/database'),
+  ('dev/database/nosql',      'dev/database'),
+  ('dev/database/redis',      'dev/database'),
+  -- L2 ia/ml
+  ('ia/ml/deep-learning',     'ia/ml'),
+  ('ia/ml/tensorflow',        'ia/ml'),
+  ('ia/ml/sklearn',           'ia/ml'),
+  -- L2 ia/nlp
+  ('ia/nlp/transformers',     'ia/nlp'),
+  ('ia/nlp/gpt',              'ia/nlp'),
+  -- L2 ia/data
+  ('ia/data/pandas',          'ia/data'),
+  ('ia/data/visualizacion',   'ia/data'),
+  ('ia/data/feature-eng',     'ia/data'),
+  -- L2 infra/devops
+  ('infra/devops/docker',     'infra/devops'),
+  ('infra/devops/kubernetes', 'infra/devops'),
+  ('infra/devops/ci-cd',      'infra/devops'),
+  -- L2 infra/cloud
+  ('infra/cloud/aws',         'infra/cloud'),
+  ('infra/cloud/terraform',   'infra/cloud'),
+  -- L2 infra/security
+  ('infra/security/owasp',    'infra/security'),
+  ('infra/security/auth',     'infra/security'),
+  -- L2 soft/arquitectura
+  ('soft/arquitectura/patrones',       'soft/arquitectura'),
+  ('soft/arquitectura/microservicios', 'soft/arquitectura'),
+  ('soft/arquitectura/hexagonal',      'soft/arquitectura'),
+  -- L2 soft/testing
+  ('soft/testing/tdd',        'soft/testing'),
+  ('soft/testing/e2e',        'soft/testing'),
+  -- L2 soft/productividad
+  ('soft/productividad/pomodoro', 'soft/productividad'),
+  ('soft/productividad/adr',      'soft/productividad'),
+  -- L2 cocina/tecnicas
+  ('cocina/tecnicas/cuchillo',  'cocina/tecnicas'),
+  ('cocina/tecnicas/coccion',   'cocina/tecnicas'),
+  ('cocina/tecnicas/emplatado', 'cocina/tecnicas'),
+  -- L2 cocina/reposteria
+  ('cocina/reposteria/masas',      'cocina/reposteria'),
+  ('cocina/reposteria/decoracion', 'cocina/reposteria'),
+  -- L2 cocina/mundial
+  ('cocina/mundial/asiatica', 'cocina/mundial'),
+  ('cocina/mundial/italiana', 'cocina/mundial'),
+  ('cocina/mundial/mexicana', 'cocina/mundial'),
+  -- L2 deporte/entrenamiento
+  ('deporte/entrenamiento/fuerza',    'deporte/entrenamiento'),
+  ('deporte/entrenamiento/cardio',    'deporte/entrenamiento'),
+  ('deporte/entrenamiento/movilidad', 'deporte/entrenamiento'),
+  -- L2 deporte/nutricion
+  ('deporte/nutricion/proteinas',   'deporte/nutricion'),
+  ('deporte/nutricion/suplementos', 'deporte/nutricion'),
+  -- L2 deporte/mindset
+  ('deporte/mindset/motivacion', 'deporte/mindset'),
+  ('deporte/mindset/recovery',   'deporte/mindset'),
+  -- L2 viajes/planificacion
+  ('viajes/planificacion/presupuesto', 'viajes/planificacion'),
+  ('viajes/planificacion/rutas',       'viajes/planificacion'),
+  ('viajes/planificacion/alojamiento', 'viajes/planificacion'),
+  -- L2 viajes/mochilero
+  ('viajes/mochilero/equipaje', 'viajes/mochilero'),
+  ('viajes/mochilero/hostels',  'viajes/mochilero'),
+  -- L2 viajes/fotos
+  ('viajes/fotos/composicion', 'viajes/fotos'),
+  ('viajes/fotos/edicion',     'viajes/fotos'),
+  -- L2 salud/mental
+  ('salud/mental/meditacion', 'salud/mental'),
+  ('salud/mental/ansiedad',   'salud/mental'),
+  ('salud/mental/habitos',    'salud/mental'),
+  -- L2 salud/fisica
+  ('salud/fisica/sueno',     'salud/fisica'),
+  ('salud/fisica/ejercicio', 'salud/fisica'),
+  -- L2 salud/nutricion
+  ('salud/nutricion/dieta', 'salud/nutricion'),
+  ('salud/nutricion/ayuno', 'salud/nutricion')
+ON CONFLICT (name) DO NOTHING;
+
+-- =========================================================
+--  Tags — paths jerárquicos (note_tags)
 -- =========================================================
 INSERT INTO note_tags (note_id, tag_name) VALUES
   -- dev/frontend
