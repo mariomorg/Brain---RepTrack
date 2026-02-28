@@ -5,11 +5,22 @@ import {
     CreateInboxItemRequest,
     UpdateInboxItemRequest,
     ProcessResult,
+    CaptureRequest,
 } from '../types/inbox.types';
 
 const BASE = '/inbox';
 
 export const inboxService = {
+    /**
+     * Unified capture — single entry point for any content type.
+     * Content type is auto-detected when not specified.
+     */
+    capture: async (data: CaptureRequest): Promise<InboxItem> => {
+        const res = await apiClient.post<ApiResponse<InboxItem>>(`${BASE}/capture`, data);
+        return res.data.data;
+    },
+
+    /** @deprecated Use capture() instead */
     create: async (data: CreateInboxItemRequest): Promise<InboxItem> => {
         const res = await apiClient.post<ApiResponse<InboxItem>>(BASE, data);
         return res.data.data;

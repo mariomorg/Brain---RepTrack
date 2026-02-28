@@ -22,5 +22,11 @@ public enum SuggestionType {
     URL_EXTRACT,
 
     /** Find related notes already stored in the Cerebro (Zettelkasten linking). */
-    RELATIONS
+    RELATIONS,
+
+    /** Format and syntax-highlight code snippets, detect language. */
+    CODE_FORMAT,
+
+    /** Extract metadata (title, description, duration) from a video reference. */
+    VIDEO_EXTRACT
 }

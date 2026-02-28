@@ -3,6 +3,11 @@ export type InboxStatus = 'PENDING' | 'PROCESSING' | 'PROCESSED' | 'AWAITING_APP
 export type InboxDetectedType =
     | 'TEXT'
     | 'LINK'
+    | 'IDEA'
+    | 'VOICE_NOTE'
+    | 'CODE'
+    | 'VIDEO_REF'
+    | 'ARTICLE_REF'
     | 'FILE'
     | 'AUDIO'
     | 'BROWSER_EXTENSION';
@@ -15,6 +20,8 @@ export interface InboxItem {
     proposalsJson: string | null;
     finalJson: string | null;
     outputPath: string | null;
+    sourceUrl: string | null;
+    metadata: string | null;
     createdAt: string;
     processedAt: string | null;
 }
@@ -23,6 +30,15 @@ export interface CreateInboxItemRequest {
     rawText: string;
     detectedType?: string | null;
     status?: string;
+}
+
+/** Unified capture request — single entry point for all content types. */
+export interface CaptureRequest {
+    content: string;
+    contentType?: string;
+    sourceUrl?: string;
+    title?: string;
+    metadata?: Record<string, string>;
 }
 
 export interface UpdateInboxItemRequest {
@@ -42,7 +58,9 @@ export type SuggestionType =
     | 'TRANSCRIBE'
     | 'OCR'
     | 'URL_EXTRACT'
-    | 'RELATIONS';
+    | 'RELATIONS'
+    | 'CODE_FORMAT'
+    | 'VIDEO_EXTRACT';
 
 export interface SuggestionDto {
     type: SuggestionType;

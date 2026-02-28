@@ -39,6 +39,17 @@ public class InboxItem {
     @Column(name = "output_path", length = 512)
     private String outputPath;
 
+    /** The original URL when the captured content is a link / video / article. */
+    @Column(name = "source_url", length = 2048)
+    private String sourceUrl;
+
+    /**
+     * Arbitrary key-value metadata stored as a JSON string (language, platform,
+     * etc.).
+     */
+    @Column(name = "metadata", columnDefinition = "TEXT")
+    private String metadata;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

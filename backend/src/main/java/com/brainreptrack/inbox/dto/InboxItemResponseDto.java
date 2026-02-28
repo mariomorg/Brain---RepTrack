@@ -17,6 +17,8 @@ public class InboxItemResponseDto {
     private String proposalsJson;
     private String finalJson;
     private String outputPath;
+    private String sourceUrl;
+    private String metadata;
     private LocalDateTime createdAt;
     private LocalDateTime processedAt;
 }

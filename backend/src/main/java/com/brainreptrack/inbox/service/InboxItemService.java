@@ -1,5 +1,6 @@
 package com.brainreptrack.inbox.service;
 
+import com.brainreptrack.inbox.dto.CaptureRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.processing.dto.ProcessResultDto;
@@ -8,6 +9,12 @@ import java.util.List;
 import java.util.UUID;
 
 public interface InboxItemService {
+
+    /**
+     * Unified capture entry point — accepts any content type.
+     * Auto-detects content type when not provided by the caller.
+     */
+    InboxItemResponseDto capture(CaptureRequestDto dto);
 
     InboxItemResponseDto create(InboxItemRequestDto dto);
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInbox } from '../hooks/useInbox';
-import { InboxItem, SuggestionDto, ProcessResult } from '../types/inbox.types';
+import { InboxItem, SuggestionDto, ProcessResult, CaptureRequest } from '../types/inbox.types';
 import { TagChip } from '@shared/components/TagChip';
 import { noteService } from '@features/cerebro/services/noteService';
 import { Note } from '@features/cerebro/types/note.types';
@@ -128,11 +128,32 @@ function applyImagePreview(id: string, url: string, prev: AttachedFile[]): Attac
     return prev.map(a => (a.id === id ? { ...a, preview: url } : a));
 }
 
-function detectType(text: string, attachments: AttachedFile[]): string {
+const VIDEO_DOMAINS = ['youtube.com', 'youtu.be', 'vimeo.com', 'dailymotion.com', 'twitch.tv', 'tiktok.com', 'loom.com'];
+const ARTICLE_DOMAINS = ['medium.com', 'dev.to', 'hashnode.com', 'substack.com', 'arxiv.org', 'wikipedia.org', 'notion.so'];
+const CODE_MARKERS = /^(import |from |package |class |def |fn |func |function |const |let |var |public |private |#include|<\?php|SELECT |CREATE TABLE)/m;
+
+function detectContentType(text: string, attachments: AttachedFile[]): string {
     if (attachments.some(a => a.type === 'image')) return 'FILE';
-    if (attachments.some(a => a.type === 'audio')) return 'AUDIO';
+    if (attachments.some(a => a.type === 'audio')) return 'VOICE_NOTE';
     if (attachments.length > 0) return 'FILE';
-    if (isUrl(text.trim())) return 'LINK';
+
+    const trimmed = text.trim();
+    if (!trimmed) return 'TEXT';
+
+    // Pure URL
+    if (isUrl(trimmed)) {
+        const lower = trimmed.toLowerCase();
+        if (VIDEO_DOMAINS.some(d => lower.includes(d))) return 'VIDEO_REF';
+        if (ARTICLE_DOMAINS.some(d => lower.includes(d))) return 'ARTICLE_REF';
+        return 'LINK';
+    }
+
+    // Code detection
+    if (trimmed.includes('```') || CODE_MARKERS.test(trimmed)) return 'CODE';
+
+    // Short casual text = idea
+    if (trimmed.length <= 280 && trimmed.split('\n').length <= 3 && !trimmed.includes('http')) return 'IDEA';
+
     return 'TEXT';
 }
 
@@ -148,9 +169,15 @@ function formatRelativeTime(iso: string): string {
 }
 
 function typeLabelForItem(item: InboxItem): string {
+    const typeMap: Record<string, string> = {
+        TEXT: 'TEXTO', LINK: 'ENLACE', IDEA: 'IDEA', VOICE_NOTE: 'VOZ',
+        CODE: 'CÓDIGO', VIDEO_REF: 'VÍDEO', ARTICLE_REF: 'ARTÍCULO',
+        FILE: 'ARCHIVO', AUDIO: 'AUDIO', BROWSER_EXTENSION: 'WEB',
+    };
+    if (item.detectedType && typeMap[item.detectedType]) return typeMap[item.detectedType];
     if (item.detectedType) return item.detectedType.replace('_', ' ');
-    if (isUrl(item.rawText.trim())) return 'LINK';
-    return 'TEXT';
+    if (isUrl(item.rawText.trim())) return 'ENLACE';
+    return 'TEXTO';
 }
 
 function generateId(): string {
@@ -279,6 +306,8 @@ function SmartSuggestions({ suggestions, onAction }: Readonly<{
             case 'OCR': return <FileIcon />;
             case 'URL_EXTRACT': return <LinkIcon />;
             case 'RELATIONS': return <BrainIcon />;
+            case 'CODE_FORMAT': return <FileIcon />;
+            case 'VIDEO_EXTRACT': return <LinkIcon />;
             default: return <SparkleIcon />;
         }
     };
@@ -800,19 +829,29 @@ export default function InboxPage() {
         const trimmed = text.trim();
         if (!trimmed && attachments.length === 0) return;
 
-        // Build rawText: if there are files, append their names
-        let rawText = trimmed;
-        if (attachments.length > 0 && !rawText) {
-            rawText = attachments.map(a => a.file.name).join(', ');
+        // Build content: if there are files, append their names
+        let content = trimmed;
+        if (attachments.length > 0 && !content) {
+            content = attachments.map(a => a.file.name).join(', ');
         } else if (attachments.length > 0) {
-            rawText += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
+            content += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
+        }
+
+        const contentType = detectContentType(trimmed, attachments);
+
+        // Extract sourceUrl for link-like types
+        let sourceUrl: string | undefined;
+        if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
+            sourceUrl = trimmed;
         }
 
         try {
-            await capture({
-                rawText,
-                detectedType: detectType(trimmed, attachments),
-            });
+            const captureReq: CaptureRequest = {
+                content,
+                contentType,
+                sourceUrl,
+            };
+            await capture(captureReq);
             setText('');
             setAttachments([]);
             textareaRef.current?.focus();
@@ -1114,7 +1153,7 @@ export default function InboxPage() {
                         <textarea
                             ref={textareaRef}
                             className="capture-box__textarea"
-                            placeholder="Escribe una idea, pega un enlace, arrastra archivos o pega una imagen con Ctrl+V…"
+                            placeholder="Captura cualquier cosa: una idea, enlace, código, referencia a vídeo o artículo, nota de voz…"
                             value={text}
                             onChange={e => setText(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -1133,6 +1172,14 @@ export default function InboxPage() {
 
                         <div className="capture-box__toolbar">
 
+                            {/* Link button */}
+                            <button
+                                className="capture-toolbar-btn"
+                                title="Insertar enlace (vídeo, artículo, web…)"
+                                onClick={() => setShowLinkModal(true)}
+                            >
+                                <LinkIcon />
+                            </button>
 
                             {/* File button */}
                             <button
@@ -1187,7 +1234,7 @@ export default function InboxPage() {
                             </button>
                         </div>
                         <div className="capture-box__hint">
-                            Enter para guardar&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar imágenes&nbsp;•&nbsp;Shift+Enter para nueva línea
+                            Enter para guardar&nbsp;•&nbsp;Texto, enlaces, código, vídeos, ideas&nbsp;•&nbsp;Arrastra archivos&nbsp;•&nbsp;Ctrl+V para pegar
                         </div>
                     </section>
 

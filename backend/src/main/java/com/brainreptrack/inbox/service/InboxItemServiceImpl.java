@@ -1,13 +1,18 @@
 package com.brainreptrack.inbox.service;
 
+import com.brainreptrack.inbox.domain.ContentType;
 import com.brainreptrack.inbox.domain.InboxItem;
+import com.brainreptrack.inbox.dto.CaptureRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -18,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -25,6 +31,75 @@ public class InboxItemServiceImpl implements InboxItemService {
 
     private final InboxItemRepository repository;
     private final AiProcessingService aiProcessingService;
+    private final ContentTypeDetector contentTypeDetector;
+    private final ObjectMapper objectMapper;
+
+    // -------------------------------------------------------
+    // Unified capture — single entry point for all content types
+    // -------------------------------------------------------
+
+    @Override
+    public InboxItemResponseDto capture(CaptureRequestDto dto) {
+        // 1. Auto-detect content type
+        ContentType detected = contentTypeDetector.detect(dto.getContent(), dto.getContentType());
+        log.info("[Capture] Content type detected: {} for input hint={}", detected, dto.getContentType());
+
+        // 2. Extract sourceUrl if content is a URL and sourceUrl not provided
+        String sourceUrl = dto.getSourceUrl();
+        if (sourceUrl == null && (detected == ContentType.LINK || detected == ContentType.VIDEO_REF
+                || detected == ContentType.ARTICLE_REF)) {
+            sourceUrl = extractUrl(dto.getContent());
+        }
+
+        // 3. Serialize metadata map to JSON
+        String metadataJson = null;
+        if (dto.getMetadata() != null && !dto.getMetadata().isEmpty()) {
+            try {
+                metadataJson = objectMapper.writeValueAsString(dto.getMetadata());
+            } catch (JsonProcessingException e) {
+                log.warn("[Capture] Could not serialize metadata: {}", e.getMessage());
+            }
+        }
+
+        // 4. Prepend title if provided
+        String rawText = dto.getContent();
+        if (dto.getTitle() != null && !dto.getTitle().isBlank()) {
+            rawText = dto.getTitle().trim() + "\n" + rawText;
+        }
+
+        // 5. Build and save the entity
+        InboxItem entity = InboxItem.builder()
+                .rawText(rawText)
+                .detectedType(detected.name())
+                .sourceUrl(sourceUrl)
+                .metadata(metadataJson)
+                .status("PENDING")
+                .build();
+        InboxItem saved = repository.save(entity);
+
+        // 6. Schedule async AI processing after commit
+        UUID savedId = saved.getId();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                aiProcessingService.processAsync(savedId);
+            }
+        });
+
+        log.info("[Capture] Saved InboxItem {} (type={}, sourceUrl={})",
+                saved.getId(), detected, sourceUrl);
+        return toDto(saved);
+    }
+
+    /** Extracts the first URL found in a text block. */
+    private String extractUrl(String text) {
+        if (text == null)
+            return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("https?://[^\\s)]+")
+                .matcher(text);
+        return m.find() ? m.group() : null;
+    }
 
     @Override
     public InboxItemResponseDto create(InboxItemRequestDto dto) {
@@ -136,6 +211,8 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .proposalsJson(e.getProposalsJson())
                 .finalJson(e.getFinalJson())
                 .outputPath(e.getOutputPath())
+                .sourceUrl(e.getSourceUrl())
+                .metadata(e.getMetadata())
                 .createdAt(e.getCreatedAt())
                 .processedAt(e.getProcessedAt())
                 .build();

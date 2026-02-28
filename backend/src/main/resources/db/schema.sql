@@ -39,6 +39,10 @@ ALTER TABLE inbox_items DROP CONSTRAINT IF EXISTS status_check;
 ALTER TABLE inbox_items ADD CONSTRAINT status_check
     CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'));
 
+-- Add unified-capture columns (safe no-op on fresh installs)
+ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS source_url   VARCHAR(2048);
+ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS metadata     TEXT;
+
 -- =========================================================
 --  TABLE: notes
 -- =========================================================
