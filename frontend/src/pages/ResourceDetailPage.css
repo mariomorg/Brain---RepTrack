@@ -403,6 +403,20 @@
   border: none;
 }
 
+/* Wrapper for PDF object/embed */
+.file-viewer-pdf-wrap {
+  width: 100%;
+  height: 600px;
+}
+
+.file-viewer-pdf-wrap object,
+.file-viewer-pdf-wrap embed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
 /* Image viewer */
 .file-viewer-img {
   display: block;

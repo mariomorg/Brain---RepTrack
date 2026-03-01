@@ -146,11 +146,28 @@ export default function FileViewer({ filename, content, fileUrl }: FileViewerPro
             <img src={fileUrl} alt={filename} className="file-viewer-img" />
           )}
           {fileAvailable && isIframe && fileUrl && (
-            <iframe
-              src={fileUrl}
-              title={filename}
-              className="file-viewer-iframe"
-            />
+            ext === 'pdf' ? (
+              <div className="file-viewer-pdf-wrap">
+                <object
+                  data={fileUrl}
+                  type="application/pdf"
+                  className="file-viewer-iframe"
+                  aria-label={filename}
+                >
+                  <embed src={fileUrl} type="application/pdf" className="file-viewer-iframe" />
+                  <p className="file-viewer-fallback-note">
+                    Tu navegador no puede mostrar el PDF directamente.{' '}
+                    <a href={fileUrl} target="_blank" rel="noopener noreferrer">Abrir en nueva pestaña ↗</a>
+                  </p>
+                </object>
+              </div>
+            ) : (
+              <iframe
+                src={fileUrl}
+                title={filename}
+                className="file-viewer-iframe"
+              />
+            )
           )}
 
           {/* Fallback: extracted text (shown when no file on disk) */}
