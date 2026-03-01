@@ -411,6 +411,56 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         ctx.restore();
       }
     }
+
+    // ── PASS 4: Anillo de selección — siempre visible aunque el pin esté oculto ──
+    if (selectedIdea) {
+      const idea = ideas.find(i => i.id === selectedIdea.id);
+      if (idea) {
+        const { x, y } = worldToScreen(camera, idea.x, idea.y, width, height);
+        const r = Math.max(5, 6 * camera.zoom);
+        ctx.save();
+        ctx.globalAlpha = 1;
+
+        // Halo exterior pulsante
+        ctx.beginPath();
+        ctx.arc(x, y, r + 10, 0, 2 * Math.PI);
+        ctx.strokeStyle = 'rgba(244,91,105,0.25)';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+
+        // Anillo principal
+        ctx.beginPath();
+        ctx.arc(x, y, r + 5, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#F45B69';
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#F45B69';
+        ctx.shadowBlur = 18;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Círculo relleno con color
+        const rootKey = idea.tagPaths[0]?.split('/')[0] ?? '';
+        const baseColor = rootKey ? colorForKey(rootKey) : '#43BCCD';
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = '#fff0f1';
+        ctx.strokeStyle = '#F45B69';
+        ctx.lineWidth = 2;
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Punto interior
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.36, 0, 2 * Math.PI);
+        ctx.fillStyle = '#F45B69';
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
   }, [camera, tags, ideas, width, height, selectedIdea]);
 
   // Cuando el padre resetea la cámara externamente (p.ej. botón Vista general),
