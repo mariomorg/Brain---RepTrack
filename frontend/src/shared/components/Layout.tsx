@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { inboxService } from '@features/inbox/services/inboxService';
 import { useAuth } from '../../features/auth/AuthContext';
+import { useInFlight } from '../../features/inbox/context/InFlightContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,9 +30,9 @@ const MapIcon = () => (
     strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
     <circle cx="12" cy="12" r="9" />
-    <line x1="12" y1="3"  x2="12" y2="6"  />
+    <line x1="12" y1="3" x2="12" y2="6" />
     <line x1="12" y1="18" x2="12" y2="21" />
-    <line x1="3"  y1="12" x2="6"  y2="12" />
+    <line x1="3" y1="12" x2="6" y2="12" />
     <line x1="18" y1="12" x2="21" y2="12" />
   </svg>
 );
@@ -56,6 +57,7 @@ function Layout({ children }: Readonly<LayoutProps>) {
   const [pendingCount, setPendingCount] = useState<number>(0);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { items: inFlightItems } = useInFlight();
 
   useEffect(() => {
     inboxService.countPending()
@@ -119,6 +121,28 @@ function Layout({ children }: Readonly<LayoutProps>) {
             <span>Mapa</span>
           </NavLink>
         </nav>
+
+        {/* In-flight processing queue */}
+        {inFlightItems.length > 0 && (
+          <div className="sidebar__inflight">
+            <div className="sidebar__inflight-title">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96-.46 2.5 2.5 0 01-1.07-4.85A3 3 0 016.5 9a3 3 0 012-2.83V4.5A2.5 2.5 0 019.5 2z" />
+                <path d="M14.5 2A2.5 2.5 0 0012 4.5v15a2.5 2.5 0 004.96-.46 2.5 2.5 0 001.07-4.85A3 3 0 0017.5 9a3 3 0 00-2-2.83V4.5A2.5 2.5 0 0014.5 2z" />
+              </svg>
+              Actividad IA
+            </div>
+            {inFlightItems.map(item => (
+              <div key={item.id} className="sidebar__inflight-item">
+                <div className="sidebar__inflight-spinner" />
+                <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                  <span className="sidebar__inflight-label">{item.label}</span>
+                  <span className="sidebar__inflight-text">{item.text}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Footer nav */}
         <div className="sidebar__footer">

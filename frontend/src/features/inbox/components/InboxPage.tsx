@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInbox } from '../hooks/useInbox';
+import { useInFlight } from '../context/InFlightContext';
 import { InboxItem, SuggestionDto, ProcessResult } from '../types/inbox.types';
 import { TagChip } from '@shared/components/TagChip';
 import { noteService } from '@features/cerebro/services/noteService';
@@ -344,148 +345,131 @@ function SmartSuggestions({ suggestions, onAction }: Readonly<{
 /* ─────────────────────────── Card for AWAITING_APPROVAL items — "Procesar" button ─────────────────────────── */
 /* ─────────────────────────── Card for AWAITING_APPROVAL items — "Procesar" inline ─────────────────────────── */
 export function PendingApprovalCard({
-  item,
-  onProcesar,
-  onReprocess, // (se queda en props por compatibilidad, pero ya no se usa)
-  onRemove,
-  processing,
+    item,
+    onProcesar,
+    onReprocess, // (se queda en props por compatibilidad, pero ya no se usa)
+    onRemove,
+    processing,
 }: Readonly<{
-  item: InboxItem;
-  onProcesar: () => void;
-  onReprocess: () => void;
-  onRemove: () => void;
-  processing: boolean;
+    item: InboxItem;
+    onProcesar: () => void;
+    onReprocess: () => void;
+    onRemove: () => void;
+    processing: boolean;
 }>) {
-  const proposal = parseProposal(item.proposalsJson);
-  const clasif = proposal?.clasificacion ?? [];
-  const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
-  const pathLabel = clasif.map((c) => c.etiqueta).join(' → ');
-  const minConf = clasif.length > 0 ? Math.min(...clasif.map((c) => c.confianza)) : null;
+    const proposal = parseProposal(item.proposalsJson);
+    const clasif = proposal?.clasificacion ?? [];
+    const motivo = proposal?.motivo ?? proposal?.rationale ?? '';
+    const pathLabel = clasif.map((c) => c.etiqueta).join(' → ');
+    const minConf = clasif.length > 0 ? Math.min(...clasif.map((c) => c.confianza)) : null;
 
-  // Legacy paths fallback
-  const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
+    // Legacy paths fallback
+    const legacyPath = !clasif.length && proposal?.paths?.[0]?.path;
 
-  return (
-    <div className="inbox-item-card inbox-item-card--approval">
-      {/* Top row: content + actions (Procesar + Trash) */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 8,
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ flex: 1 }}>
+    return (
+        <div className="inbox-item-card inbox-item-card--approval">
+            {/* Content + actions (Procesar + Trash) */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    marginBottom: 6,
+                }}
+            >
+                <div style={{ flex: 1 }}>
+                    <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>
+                        {displayText(item)}
+                    </div>
+                    <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                </div>
 
-          <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>
-            {displayText(item)}
-          </div>
+                {/* Actions: Procesar next to Trash */}
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                        className="ai-action-btn ai-action-btn--procesar"
+                        onClick={onProcesar}
+                        disabled={processing}
+                        title="Procesar"
+                        style={{
+                            flex: 'unset',
+                            padding: '7px 10px',
+                            borderRadius: 5,
+                            minWidth: 70,
+                            height: 30,
+                            marginTop: 2,
+                        }}
+                    >
+                        {processing ? (
+                            <>
+                                <BrainIcon /> Procesando…
+                            </>
+                        ) : (
+                            <>
+                                <CheckIcon /> Procesar
+                            </>
+                        )}
+                    </button>
 
-          <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
-        </div>
+                    <button
+                        className="capture-toolbar-btn"
+                        title="Eliminar"
+                        onClick={onRemove}
+                        style={{ color: '#EF4444', flexShrink: 0, height: 34 }}
+                    >
+                        <TrashIcon />
+                    </button>
+                </div>
+            </div>
 
-        {/* Actions: Procesar next to Trash */}
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-          <button
-            className="ai-action-btn ai-action-btn--procesar"
-            onClick={onProcesar}
-            disabled={processing}
-            title="Procesar"
-            style={{
-              flex: 'unset',
-              padding: '7px 10px',
-              borderRadius: 5,
-              minWidth: 70,
-              height: 30,
-              marginTop: 2,
-            }}
-          >
-            {processing ? (
-              <>
-                <BrainIcon /> Procesando…
-              </>
+            {/* AI proposal label + confidence + tags */}
+            <div className="ai-proposal-box2" style={{ marginBottom: 6 }}>
+                <div className="ai-proposal-box__top">
+                    <div className="ai-proposal-box__label">
+                        <BrainIcon /> Propuesta de la IA
+                        {minConf !== null && <span className="ai-proposal-box__conf">{minConf}% conf.</span>}
+                    </div>
+
+                </div>
+                {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
+            </div>
+            {pathLabel ? (
+                <div className="ai-proposal-box__path">
+                    {clasif
+                        .filter((c) => c.etiqueta)
+                        .map((c, i) => (
+                            <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && (
+                                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
+                                )}
+                                <TagChip tag={c.etiqueta} />
+                            </span>
+                        ))}
+                </div>
+            ) : !pathLabel && legacyPath ? (
+                <div className="ai-proposal-box__path">
+                    {legacyPath
+                        .split('/')
+                        .filter(Boolean)
+                        .map((seg, i) => (
+                            <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {i > 0 && (
+                                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
+                                )}
+                                <TagChip tag={seg} />
+                            </span>
+                        ))}
+                </div>
             ) : (
-              <>
-                <CheckIcon /> Procesar
-              </>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
+                    Sin clasificación definida
+                </div>
             )}
-          </button>
 
-          <button
-            className="capture-toolbar-btn"
-            title="Eliminar"
-            onClick={onRemove}
-            style={{ color: '#EF4444', flexShrink: 0, height: 34 }}
-          >
-            <TrashIcon />
-          </button>
-        </div>
-      </div>
-
-      {/* AI classification result */}
-      <div className="ai-proposal-box">
-        <div className="ai-proposal-box__label">
-          <BrainIcon /> Propuesta de la IA
-          {minConf !== null && <span className="ai-proposal-box__conf">{minConf}% conf.</span>}
         </div>
 
-
-
-        {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
-      </div>
-
-      {/* AI extensive summary */}
-      {item.aiSummary && (
-        <div className="ai-summary-box">
-          <div className="ai-summary-box__label">
-            <SparkleIcon /> Resumen extenso del tema
-          </div>
-          <div className="ai-summary-box__content">{item.aiSummary}</div>
-        </div>
-      )}
-
-        {pathLabel ? (
-          <div className="ai-proposal-box__path">
-            {clasif
-              .filter((c) => c.etiqueta)
-              .map((c, i) => (
-                <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {i > 0 && (
-                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
-                  )}
-                  <TagChip tag={c.etiqueta} />
-                </span>
-              ))}
-          </div>
-        ) : null}
-
-        {!pathLabel && legacyPath ? (
-          <div className="ai-proposal-box__path">
-            {legacyPath
-              .split('/')
-              .filter(Boolean)
-              .map((seg, i) => (
-                <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {i > 0 && (
-                    <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>
-                  )}
-                  <TagChip tag={seg} />
-                </span>
-              ))}
-          </div>
-        ) : null}
-
-        {!pathLabel && !legacyPath ? (
-          <div style={{ color: 'var(--color-text-muted)', fontSize: 12, fontStyle: 'italic' }}>
-            Sin clasificación definida
-          </div>
-        ) : null}
-
-    </div>
-    
-  );
+    );
 }
 
 /* ─────────────────────────── Processed card (shows result + suggestions) ─────────────────────────── */
@@ -493,18 +477,14 @@ export function ProcessedCard({
     item,
     suggestions,
     onReprocess,
-    onCreateMarkdown,
     onRemove,
     onSuggestion,
-    creatingMarkdown,
 }: Readonly<{
     item: InboxItem;
     suggestions: SuggestionDto[];
     onReprocess: () => void;
-    onCreateMarkdown: () => void;
     onRemove: () => void;
     onSuggestion: (suggestion: SuggestionDto) => void;
-    creatingMarkdown: boolean;
 }>) {
     const proposal = parseProposal(item.proposalsJson);
     const clasif = proposal?.clasificacion ?? [];
@@ -530,29 +510,35 @@ export function ProcessedCard({
 
             {/* Classification result */}
             {(clasif.length > 0 || legacyPath) && (
-                <div className="ai-proposal-box" style={{ marginBottom: 8 }}>
-                    <div className="ai-proposal-box__label"><BrainIcon /> Clasificación aprobada</div>
-                    {clasif.length > 0 && (
-                        <div className="ai-proposal-box__path">
-                            {clasif.filter(c => c.etiqueta).map((c, i) => (
-                                <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
-                                    <TagChip tag={c.etiqueta} />
-                                </span>
-                            ))}
+                <div className="ai-proposal-box5" style={{ marginBottom: 8 }}>
+                    <div className="ai-proposal-box4">
+                        <div className="ai-proposal-box3">
+                            <div className="ai-proposal-box__label"><BrainIcon /> Clasificación aprobada</div>
+                            {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
                         </div>
-                    )}
-                    {clasif.length === 0 && legacyPath && (
-                        <div className="ai-proposal-box__path">
-                            {legacyPath.split('/').filter(Boolean).map((seg, i) => (
-                                <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                    {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
-                                    <TagChip tag={seg} />
-                                </span>
-                            ))}
-                        </div>
-                    )}
-                    {motivo && <div className="ai-proposal-box__motivo">{motivo}</div>}
+                        {clasif.length > 0 && (
+
+                            <div className="ai-proposal-box__path">
+                                {clasif.filter(c => c.etiqueta).map((c, i) => (
+                                    <span key={c.nivel} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                        {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                        <TagChip tag={c.etiqueta} />
+                                    </span>
+                                ))}
+                                {clasif.length === 0 && legacyPath && (
+                                    <div className="ai-proposal-box__path">
+                                        {legacyPath.split('/').filter(Boolean).map((seg, i) => (
+                                            <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                {i > 0 && <span style={{ color: 'var(--color-text-muted)', margin: '0 2px' }}>›</span>}
+                                                <TagChip tag={seg} />
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                 </div>
             )}
 
@@ -578,24 +564,6 @@ export function ProcessedCard({
 
             {/* Smart suggestions (server-side) */}
             <SmartSuggestions suggestions={suggestions} onAction={onSuggestion} />
-
-
-            {/* Actions — no approve/reject */}
-            <div className="processed-actions-blank">
-            <div className="processed-actions">
-                <button
-                    className="ai-action-btn ai-action-btn--markdown"
-                    onClick={onCreateMarkdown}
-                    disabled={creatingMarkdown}
-                >
-                    <MarkdownIcon /> {(() => {
-                        if (creatingMarkdown) return 'Generando…';
-                        if (hasSavedFile) return 'Regenerar Markdown';
-                        return 'Crear Markdown';
-                    })()}
-                </button>
-            </div>
-            </div>
         </div>
     );
 }
@@ -625,6 +593,12 @@ export default function InboxPage() {
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
     // Track which items are currently generating markdown
     const [markdownCreatingIds, setMarkdownCreatingIds] = useState<Set<string>>(new Set());
+    // Pagination for processed items
+    const PROCESSED_PAGE_SIZE = 1;
+    const [processedPage, setProcessedPage] = useState(0);
+    // Pagination for awaiting items
+    const AWAITING_PAGE_SIZE = 3;
+    const [awaitingPage, setAwaitingPage] = useState(0);
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -860,7 +834,13 @@ export default function InboxPage() {
     };
 
     /* ── Procesar (unified action — replaces approve/reject) ── */
+    const inFlight = useInFlight();
     const handleProcesar = async (id: string) => {
+        // Find the item text for sidebar display
+        const item = pendingItems.find(i => i.id === id);
+        const label = item ? displayText(item) : 'elemento';
+        const flightId = inFlight.add(label, 'Profundizando…');
+
         setProcessingIds(prev => new Set(prev).add(id));
         try {
             const result = await procesar(id);
@@ -874,6 +854,7 @@ export default function InboxPage() {
         } catch {
             showToast('Error al procesar el elemento', 'error');
         } finally {
+            inFlight.remove(flightId);
             setProcessingIds(prev => {
                 const next = new Set(prev);
                 next.delete(id);
@@ -883,64 +864,62 @@ export default function InboxPage() {
     };
 
     /* ── Send ── */
-    const handleSend = async () => {
+    const handleSend = () => {
         const trimmed = text.trim();
-        if (!trimmed && attachments.length === 0) return;
+        const currentAttachments = [...attachments];
+        if (!trimmed && currentAttachments.length === 0) return;
+
+        // Clear input immediately so user can keep sending
+        setText('');
+        setAttachments([]);
+        textareaRef.current?.focus();
+        showToast('Enviado al inbox ✓');
 
         // Check for document files (PDF, TXT, etc.) that should be uploaded for text extraction
         const EXTRACTABLE_EXTENSIONS = ['.pdf', '.txt', '.md', '.csv', '.json', '.xml', '.log', '.yaml', '.yml', '.html', '.htm', '.java', '.py', '.js', '.ts', '.css', '.sql'];
-        const documentFiles = attachments.filter(a =>
+        const documentFiles = currentAttachments.filter(a =>
             a.type === 'file' && EXTRACTABLE_EXTENSIONS.some(ext => a.file.name.toLowerCase().endsWith(ext))
         );
 
-        try {
-            if (documentFiles.length > 0) {
-                // Upload each document file for server-side text extraction
-                for (const doc of documentFiles) {
-                    await captureFile(doc.file, trimmed || undefined);
-                }
-                // If there are also non-document attachments or standalone text, send those too
-                const nonDocAttachments = attachments.filter(a => !documentFiles.includes(a));
-                if (nonDocAttachments.length > 0 || (trimmed && documentFiles.length > 1)) {
-                    let content = trimmed;
-                    if (nonDocAttachments.length > 0 && !content) {
-                        content = nonDocAttachments.map(a => a.file.name).join(', ');
-                    } else if (nonDocAttachments.length > 0) {
-                        content += '\n[Adjuntos: ' + nonDocAttachments.map(a => a.file.name).join(', ') + ']';
-                    }
-                    if (content) {
-                        const contentType = detectContentType(content, nonDocAttachments);
-                        let sourceUrl: string | undefined;
-                        if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(content)) {
-                            sourceUrl = content;
-                        }
-                        await capture({ content, contentType, sourceUrl });
-                    }
-                }
-            } else {
-                // No document files — original text-only capture flow
+        if (documentFiles.length > 0) {
+            // Upload each document file for server-side text extraction
+            for (const doc of documentFiles) {
+                captureFile(doc.file, trimmed || undefined);
+            }
+            // If there are also non-document attachments or standalone text, send those too
+            const nonDocAttachments = currentAttachments.filter(a => !documentFiles.includes(a));
+            if (nonDocAttachments.length > 0 || (trimmed && documentFiles.length > 1)) {
                 let content = trimmed;
-                if (attachments.length > 0 && !content) {
-                    content = attachments.map(a => a.file.name).join(', ');
-                } else if (attachments.length > 0) {
-                    content += '\n[Adjuntos: ' + attachments.map(a => a.file.name).join(', ') + ']';
+                if (nonDocAttachments.length > 0 && !content) {
+                    content = nonDocAttachments.map(a => a.file.name).join(', ');
+                } else if (nonDocAttachments.length > 0) {
+                    content += '\n[Adjuntos: ' + nonDocAttachments.map(a => a.file.name).join(', ') + ']';
                 }
-
-                const contentType = detectContentType(trimmed, attachments);
-                let sourceUrl: string | undefined;
-                if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
-                    sourceUrl = trimmed;
+                if (content) {
+                    const contentType = detectContentType(content, nonDocAttachments);
+                    let sourceUrl: string | undefined;
+                    if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(content)) {
+                        sourceUrl = content;
+                    }
+                    capture({ content, contentType, sourceUrl });
                 }
-
-                await capture({ content, contentType, sourceUrl });
+            }
+        } else {
+            // No document files — original text-only capture flow
+            let content = trimmed;
+            if (currentAttachments.length > 0 && !content) {
+                content = currentAttachments.map(a => a.file.name).join(', ');
+            } else if (currentAttachments.length > 0) {
+                content += '\n[Adjuntos: ' + currentAttachments.map(a => a.file.name).join(', ') + ']';
             }
 
-            setText('');
-            setAttachments([]);
-            textareaRef.current?.focus();
-            showToast('Guardado en el inbox ✓');
-        } catch {
-            showToast('Error al guardar', 'error');
+            const contentType = detectContentType(trimmed, currentAttachments);
+            let sourceUrl: string | undefined;
+            if (['LINK', 'VIDEO_REF', 'ARTICLE_REF'].includes(contentType) && isUrl(trimmed)) {
+                sourceUrl = trimmed;
+            }
+
+            capture({ content, contentType, sourceUrl });
         }
     };
 
@@ -948,7 +927,7 @@ export default function InboxPage() {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     };
 
-    const canSend = !submitting && (text.trim().length > 0 || attachments.length > 0);
+    const canSend = text.trim().length > 0 || attachments.length > 0;
 
     return (
         <>
@@ -1097,7 +1076,14 @@ export default function InboxPage() {
                     margin-bottom: 10px;
                     display: flex;
                     flex-direction: column;
-                    gap: 8px;
+                    gap: 6px;
+                }
+                .ai-proposal-box__top {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
                 }
                 .ai-proposal-box__label {
                     display: flex;
@@ -1205,6 +1191,24 @@ export default function InboxPage() {
                 }
                    .processed-actions {
                     display: flex; gap: 8px; margin-top: 8px; width: 50%; margin-left: auto; margin-right: auto;
+                }
+
+                /* ── Pagination ── */
+                .pagination-controls {
+                    display: flex; align-items: center; gap: 4px;
+                }
+                .pagination-btn {
+                    display: flex; align-items: center; justify-content: center;
+                    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--color-border, #2d2d4a);
+                    background: var(--color-bg, #11111f); color: var(--color-text, #e2e8f0);
+                    font-size: 16px; font-weight: 600; cursor: pointer; transition: background .15s, opacity .15s;
+                    padding: 0; line-height: 1;
+                }
+                .pagination-btn:hover:not(:disabled) { background: var(--color-bg-hover, rgba(99,102,241,.12)); }
+                .pagination-btn:disabled { opacity: .35; cursor: default; }
+                .pagination-info {
+                    font-size: 11px; color: var(--color-text-muted, #94a3b8); min-width: 40px; text-align: center;
+                    font-variant-numeric: tabular-nums;
                 }
 
                 /* ── Smart suggestions ── */
@@ -1383,59 +1387,116 @@ export default function InboxPage() {
                             <>
                                 {/* ── Items awaiting user action — "Procesar" button ── */}
                                 <div className="ai-proposal-box">
-                                {awaitingItems.length > 0 && (
-                                    <>
-                                        <div className="ai-proposal-box__header">
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px', color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                                            <BrainIcon /> Listos para procesar
-                                        </div>
-                                        <div className="inbox-items-list" style={{ marginBottom: 20, marginTop: -7 }}>
-                                            {awaitingItems.map(item => (
-                                                <PendingApprovalCard
-                                                    key={item.id}
-                                                    item={item}
-                                                    onProcesar={() => handleProcesar(item.id)}
-                                                    onReprocess={() => { void reprocess(item.id); }}
-                                                    onRemove={() => remove(item.id)}
-                                                    processing={processingIds.has(item.id)}
-                                                />
-                                            ))}
-                                        </div>
-                                        </div>
-                                    </>
-                                )}
+                                    {awaitingItems.length > 0 && (() => {
+                                        const awTotalPages = Math.ceil(awaitingItems.length / AWAITING_PAGE_SIZE);
+                                        const awPageItems = awaitingItems.slice(
+                                            awaitingPage * AWAITING_PAGE_SIZE,
+                                            (awaitingPage + 1) * AWAITING_PAGE_SIZE
+                                        );
+                                        return (
+                                            <>
+                                                <div className="ai-proposal-box__header">
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 8px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                            <BrainIcon /> Listos para procesar
+                                                            <span style={{ fontWeight: 400, fontSize: 11, textTransform: 'none' }}>({awaitingItems.length})</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="inbox-items-list" style={{ marginBottom: 12, marginTop: -7 }}>
+                                                        {awPageItems.map(item => (
+                                                            <PendingApprovalCard
+                                                                key={item.id}
+                                                                item={item}
+                                                                onProcesar={() => handleProcesar(item.id)}
+                                                                onReprocess={() => { void reprocess(item.id); }}
+                                                                onRemove={() => remove(item.id)}
+                                                                processing={processingIds.has(item.id)}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                                                        {awaitingItems.length > 1 && (
+                                                            <button
+                                                                className="ai-action-btn ai-action-btn--procesar"
+                                                                style={{ fontSize: 11, borderRadius: 5, height: 28, width: '50%', margin: '0 auto' }}
+                                                                onClick={() => { awaitingItems.forEach(item => handleProcesar(item.id)); }}
+                                                            >
+                                                                <BrainIcon /> Procesar todos ({awaitingItems.length})
+                                                            </button>
+                                                        )}
+                                                        {awTotalPages > 1 && (
+                                                            <div className="pagination-controls">
+                                                                <button
+                                                                    className="pagination-btn"
+                                                                    disabled={awaitingPage === 0}
+                                                                    onClick={() => setAwaitingPage(p => p - 1)}
+                                                                >‹</button>
+                                                                <span className="pagination-info">{awaitingPage + 1} / {awTotalPages}</span>
+                                                                <button
+                                                                    className="pagination-btn"
+                                                                    disabled={awaitingPage >= awTotalPages - 1}
+                                                                    onClick={() => setAwaitingPage(p => p + 1)}
+                                                                >›</button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
 
-                                {/* ── Recently processed (no approve/reject) ── */}
-                                {processedItems.length > 0 && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0 0', color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em',marginTop: 0 }}>
-                                            <CheckIcon /> Procesados recientemente
-                                        </div>
-                                        <div className="inbox-items-list">
-                                            {processedItems.map(item => (
-                                                <ProcessedCard
-                                                    key={item.id}
-                                                    item={item}
-                                                    suggestions={processResults[item.id]?.suggestions ?? []}
-                                                    onReprocess={() => { void reprocess(item.id); }}
-                                                    onCreateMarkdown={() => handleCreateMarkdown(item.id)}
-                                                    onRemove={() => remove(item.id)}
-                                                    onSuggestion={handleSuggestion}
-                                                    creatingMarkdown={markdownCreatingIds.has(item.id)}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                
+                                    {/* ── Recently processed (paginated) ── */}
+                                    {processedItems.length > 0 && (() => {
+                                        const totalPages = Math.ceil(processedItems.length / PROCESSED_PAGE_SIZE);
+                                        const pageItems = processedItems.slice(
+                                            processedPage * PROCESSED_PAGE_SIZE,
+                                            (processedPage + 1) * PROCESSED_PAGE_SIZE
+                                        );
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: '50%' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                                                    <CheckIcon /> Procesados recientemente
+                                                    <span style={{ fontWeight: 400, fontSize: 11, textTransform: 'none' }}>({processedItems.length})</span>
+                                                </div>
+                                                <div className="inbox-items-list">
+                                                    {pageItems.map(item => (
+                                                        <ProcessedCard
+                                                            key={item.id}
+                                                            item={item}
+                                                            suggestions={processResults[item.id]?.suggestions ?? []}
+                                                            onReprocess={() => { void reprocess(item.id); }}
+                                                            onRemove={() => remove(item.id)}
+                                                            onSuggestion={handleSuggestion}
+                                                        />
+                                                    ))}
+                                                </div>
+                                                {totalPages > 1 && (
+                                                    <div className="pagination-controls" style={{ justifyContent: 'center', marginTop: 4 }}>
+                                                        <button
+                                                            className="pagination-btn"
+                                                            disabled={processedPage === 0}
+                                                            onClick={() => setProcessedPage(p => p - 1)}
+                                                        >‹</button>
+                                                        <span className="pagination-info">{processedPage + 1} / {totalPages}</span>
+                                                        <button
+                                                            className="pagination-btn"
+                                                            disabled={processedPage >= totalPages - 1}
+                                                            onClick={() => setProcessedPage(p => p + 1)}
+                                                        >›</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
                                 </div>
-                                
+
                             </>
-                            
+
                         );
-                        
+
                     })()}
-                    
+
                 </div>
 
                 {/* ── Right sidebar ── */}

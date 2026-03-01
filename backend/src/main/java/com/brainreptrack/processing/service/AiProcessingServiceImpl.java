@@ -95,6 +95,13 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         doProcess(inboxItemId);
     }
 
+    @Override
+    @Transactional
+    public void processInCurrentTransaction(UUID inboxItemId) {
+        log.info("[AI] In-transaction processing started for InboxItem {}", inboxItemId);
+        doProcess(inboxItemId);
+    }
+
     // -------------------------------------------------------------------------
     // Internal
     // -------------------------------------------------------------------------
@@ -175,20 +182,9 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             String proposalsJson = objectMapper.writeValueAsString(result);
             item.setProposalsJson(proposalsJson);
 
-            // ── 5b. Generate extensive topic summary (with web search if needed) ─
-            try {
-                String summary = summaryGenerationService.generateSummary(
-                        item.getRawText(), item.getDetectedType());
-                if (summary != null && !summary.isBlank()) {
-                    item.setAiSummary(summary);
-                    log.info("[AI] Extensive summary generated for InboxItem {} ({} chars)",
-                            inboxItemId, summary.length());
-                }
-            } catch (Exception summaryEx) {
-                log.warn("[AI] Summary generation failed for InboxItem {}: {}",
-                        inboxItemId, summaryEx.getMessage());
-                // Non-fatal — processing continues without a summary
-            }
+            // ── 5b. Summary generation DEFERRED to processItem() ─────────────
+            // The extensive summary is now generated only when the user clicks
+            // "Procesar", keeping the initial analysis fast (tags + type only).
 
             // ── 6. Mark as awaiting user approval ────────────────────────────────
             item.setStatus("AWAITING_APPROVAL");
@@ -228,17 +224,34 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             }
         }
 
-        // ── 2. Auto-create Note (equivalent to old approve) ─────────────────
+        // ── 2. Generate extensive topic summary (moved from doProcess) ────
+        try {
+            log.info("[AI] Generating extensive summary for InboxItem {}", inboxItemId);
+            String summary = summaryGenerationService.generateSummary(
+                    item.getRawText(), item.getDetectedType());
+            if (summary != null && !summary.isBlank()) {
+                item.setAiSummary(summary);
+                inboxItemRepository.save(item);
+                log.info("[AI] Extensive summary generated for InboxItem {} ({} chars)",
+                        inboxItemId, summary.length());
+            }
+        } catch (Exception summaryEx) {
+            log.warn("[AI] Summary generation failed for InboxItem {}: {}",
+                    inboxItemId, summaryEx.getMessage());
+            // Non-fatal — processing continues without a summary
+        }
+
+        // ── 3. Auto-create Note (equivalent to old approve) ─────────────────
         if (classification != null) {
             autoCreateNote(item, classification);
         }
 
-        // ── 3. Mark as PROCESSED ────────────────────────────────────────────
+        // ── 4. Mark as PROCESSED ────────────────────────────────────────────
         item.setStatus("PROCESSED");
         item.setProcessedAt(LocalDateTime.now());
         inboxItemRepository.save(item);
 
-        // ── 4. Generate Markdown + save to file ────────────────────────────
+        // ── 5. Generate Markdown + save to file ────────────────────────────
         String markdown = "";
         try {
             String mdPrompt = buildMarkdownPrompt(item, classification);
@@ -256,10 +269,10 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             log.error("[AI] Markdown generation failed for {}: {}", inboxItemId, e.getMessage());
         }
 
-        // ── 5. Analyse suggestions (decoupled — rule-based) ─────────────────
+        // ── 6. Analyse suggestions (decoupled — rule-based) ─────────────────
         List<SuggestionDto> suggestions = suggestionAnalyzer.analyze(item);
 
-        // ── 6. Build combined response ──────────────────────────────────────
+        // ── 7. Build combined response ──────────────────────────────────────
         InboxItemResponseDto itemDto = InboxItemResponseDto.builder()
                 .id(item.getId())
                 .rawText(item.getRawText())

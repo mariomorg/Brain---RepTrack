@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { InboxItem, CaptureRequest, ProcessResult } from '../types/inbox.types';
 import { inboxService } from '../services/inboxService';
+import { useInFlight } from '../context/InFlightContext';
 
-const POLL_INTERVAL_MS = 3000; // poll while PENDING/PROCESSING items exist
 const MAX_PROCESSED_ITEMS = 20; // show last N processed items in inbox
 
 export function useInbox() {
@@ -12,6 +12,7 @@ export function useInbox() {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const inFlight = useInFlight();
 
     const loadPending = useCallback(async () => {
         try {
@@ -41,39 +42,31 @@ export function useInbox() {
         loadPending();
     }, [loadPending]);
 
-    // Polling removed: only load inbox on mount or after actions
+    // No polling needed — capture() now returns the item already classified
+    // by the backend (synchronous AI analysis within the same request).
 
     /**
-     * Unified capture — uses the new /capture endpoint with auto-detection.
+     * Unified capture — fires in the background so the user can keep sending.
+     * Does NOT block: submitting stays false, the input remains usable.
      */
-    const capture = useCallback(async (request: CaptureRequest) => {
-        try {
-            setSubmitting(true);
-            await inboxService.capture(request);
-            await loadPending();
-        } catch (e) {
-            setError('Error al guardar el elemento');
-            throw e;
-        } finally {
-            setSubmitting(false);
-        }
-    }, [loadPending]);
+    const capture = useCallback((request: CaptureRequest) => {
+        const flightId = inFlight.add(request.content || request.sourceUrl || 'Nuevo elemento');
+        inboxService.capture(request)
+            .then(() => loadPending())
+            .catch(() => setError('Error al guardar el elemento'))
+            .finally(() => inFlight.remove(flightId));
+    }, [loadPending, inFlight]);
 
     /**
-     * File capture — uploads a file (PDF, TXT, etc.) and extracts text on the backend.
+     * File capture — fires in the background so the user can keep sending.
      */
-    const captureFile = useCallback(async (file: File, additionalText?: string) => {
-        try {
-            setSubmitting(true);
-            await inboxService.captureFile(file, additionalText);
-            await loadPending();
-        } catch (e) {
-            setError('Error al subir el archivo');
-            throw e;
-        } finally {
-            setSubmitting(false);
-        }
-    }, [loadPending]);
+    const captureFile = useCallback((file: File, additionalText?: string) => {
+        const flightId = inFlight.add(additionalText || file.name);
+        inboxService.captureFile(file, additionalText)
+            .then(() => loadPending())
+            .catch(() => setError('Error al subir el archivo'))
+            .finally(() => inFlight.remove(flightId));
+    }, [loadPending, inFlight]);
 
     const dismiss = useCallback(async (id: string) => {
         try {

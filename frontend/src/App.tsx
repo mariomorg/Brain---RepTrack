@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from
 import Layout from './shared/components/Layout';
 import InboxPage, { PendingApprovalCard, ProcessedCard } from './features/inbox/components/InboxPage';
 import { useInbox } from './features/inbox/hooks/useInbox';
+import { InFlightProvider } from './features/inbox/context/InFlightContext';
 
 import CerebroPage from './features/cerebro/components/CerebroPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
@@ -48,14 +49,14 @@ const MapPage: React.FC = () => {
   const canvasWidth = Math.max(300, width - 240);
   const canvasHeight = Math.max(300, height);
 
-  const [camera, setCamera]         = React.useState({ x: 0, y: 0, zoom: 0.08 });
-  const initialZoom                 = React.useRef(0.08);
+  const [camera, setCamera] = React.useState({ x: 0, y: 0, zoom: 0.08 });
+  const initialZoom = React.useRef(0.08);
   const [resetViewSignal, setResetViewSignal] = React.useState(0);
   const [focusTagPath, setFocusTagPath] = React.useState<string | null>(null);
   const [selectedTag, setSelectedTag] = React.useState<TagNode | null>(null);
   const [selectedIdea, setSelectedIdea] = React.useState<Idea | null>(null);
-  const [popupIdea, setPopupIdea]       = React.useState<Idea | null>(null);
-  const [visibleTags, setVisibleTags]   = React.useState<TagNode[]>([]);
+  const [popupIdea, setPopupIdea] = React.useState<Idea | null>(null);
+  const [visibleTags, setVisibleTags] = React.useState<TagNode[]>([]);
   const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
 
   // Cargar datos del mapa
@@ -267,7 +268,7 @@ function HomeRedesigned() {
     }
   };
 
-  const handleSuggestion = () => {};
+  const handleSuggestion = () => { };
 
   let pendientesContent;
   if (loading) {
@@ -382,7 +383,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <InFlightProvider>
+          <AppRoutes />
+        </InFlightProvider>
       </AuthProvider>
     </BrowserRouter>
   );

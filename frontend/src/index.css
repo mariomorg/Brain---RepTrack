@@ -221,6 +221,70 @@ body {
     gap: 2px;
 }
 
+/* ── In-flight processing queue ── */
+.sidebar__inflight {
+    margin: 12px 12px 0;
+    padding: 10px 12px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar__inflight-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-accent, #6366f1);
+}
+
+.sidebar__inflight-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.sidebar__inflight-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(99, 102, 241, 0.25);
+    border-top-color: var(--color-accent, #6366f1);
+    border-radius: 50%;
+    animation: inflight-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes inflight-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.sidebar__inflight-text {
+    font-size: 12px;
+    color: var(--color-text-secondary, #94a3b8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+}
+
+.sidebar__inflight-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-accent, #6366f1);
+    letter-spacing: 0.03em;
+}
+
 .sidebar__logout-btn {
     background: none;
     border: none;
@@ -953,7 +1017,7 @@ body {
 }
 
 .inbox-sidebar {
-    width: 30%;
+    width: 35%;
     min-width: 280px;
     height: 100vh;
     border-left: 1px solid var(--color-border);
@@ -1121,6 +1185,23 @@ body {
 .ai-proposal-box {
     display: flex;
     flex-direction: row !important;
+}
+
+.ai-proposal-box {
+    display: flex;
+    flex-direction: row !important;
+}
+
+.ai-proposal-box2,
+.ai-proposal-box3,
+.ai-proposal-box4 {
+    display: flex;
+    flex-direction: column !important;
+}
+
+
+.ai-proposal-box__header {
+    flex-direction: column !important;
 }
 
 .ai-proposal-box__header {
@@ -1533,7 +1614,10 @@ body {
 }
 
 /* Caja “Propuesta de la IA”: volver a columna, compacta y alineada */
-.inbox-item-card--approval .ai-proposal-box {
+.inbox-item-card--approval,
+.ai-proposal-box,
+.ai-proposal-box2,
+.ai-proposal-box3 {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -1556,6 +1640,10 @@ body {
     color: var(--color-primary);
 }
 
+.ai-proposal-box__label {
+    flex-direction: row !important;
+}
+
 /* “72% conf.” como pill */
 .inbox-item-card--approval .ai-proposal-box__conf {
     margin-left: auto;
@@ -1568,13 +1656,8 @@ body {
     border-radius: 999px;
 }
 
-/* Chips (TagChip) con wrap cómodo */
-.inbox-item-card--approval .ai-proposal-box__path {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-    margin-top: 7px;
+.ai-proposal-box__path {
+    padding-top: 10px;
 }
 
 /* Motivo: más legible y menos “cursi” */
