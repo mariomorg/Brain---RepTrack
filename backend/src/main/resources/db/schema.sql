@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS inbox_items (
 -- Recreate constraint idempotently (works on both fresh installs and upgrades)
 ALTER TABLE inbox_items DROP CONSTRAINT IF EXISTS status_check;
 ALTER TABLE inbox_items ADD CONSTRAINT status_check
-    CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED'))
+    CHECK (status IN ('PENDING', 'PROCESSING', 'PROCESSED', 'AWAITING_APPROVAL', 'REJECTED', 'ARCHIVED', 'CALENDAR_DONE'))
     NOT VALID;
 
 -- Add unified-capture columns (safe no-op on fresh installs)
@@ -68,8 +68,12 @@ CREATE TABLE IF NOT EXISTS notes (
     CONSTRAINT fk_notes_inbox
         FOREIGN KEY (inbox_item_id)
         REFERENCES inbox_items(id)
-        ON DELETE RESTRICT
+        ON DELETE SET NULL
 );
+-- Migrate existing constraint from RESTRICT to SET NULL (no-op on fresh installs)
+ALTER TABLE notes DROP CONSTRAINT IF EXISTS fk_notes_inbox;
+ALTER TABLE notes ADD CONSTRAINT fk_notes_inbox
+    FOREIGN KEY (inbox_item_id) REFERENCES inbox_items(id) ON DELETE SET NULL;
 -- Add confidence_score if the table already existed without it
 ALTER TABLE notes ADD COLUMN IF NOT EXISTS confidence_score DOUBLE PRECISION;
 

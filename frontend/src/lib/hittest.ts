@@ -60,12 +60,12 @@ export function hitTestIdea(
   canvasW: number,
   canvasH: number,
 ): Idea | null {
-  const zoom    = camera.zoom;
-  const pinR    = Math.max(4, 7 * zoom);       // mismo cálculo que el draw
-  const hitR    = pinR + 5;                    // 5px de margen táctil
+  const zoom = camera.zoom;
+  const pinR = Math.max(4, 7 * zoom);       // mismo cálculo que el draw
+  const hitR = pinR + 5;                    // 5px de margen táctil
 
   // Estimar ancho medio de pill (sin canvas, usamos aprox 11px/carácter a fs~11)
-  const fs      = Math.max(9, 11 * Math.min(zoom, 1.4));
+  const fs = Math.max(9, 11 * Math.min(zoom, 1.4));
   const pillVisible = zoom >= 0.50;
 
   for (const idea of ideas) {
@@ -81,10 +81,10 @@ export function hitTestIdea(
     // 2. Hit en la pill del texto (si es visible)
     if (pillVisible) {
       const approxTextW = idea.title.length * fs * 0.6;
-      const pH  = fs + 7;
-      const pW  = approxTextW + 14;
-      const lx  = x + pinR + 6;        // misma posición que en draw
-      const ly  = y - pH / 2;
+      const pH = fs + 7;
+      const pW = approxTextW + 14;
+      const lx = x + pinR + 6;        // misma posición que en draw
+      const ly = y - pH / 2;
       if (px >= lx && px <= lx + pW && py >= ly && py <= ly + pH) return idea;
     }
   }

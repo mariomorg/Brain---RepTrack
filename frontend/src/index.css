@@ -221,6 +221,70 @@ body {
     gap: 2px;
 }
 
+/* ── In-flight processing queue ── */
+.sidebar__inflight {
+    margin: 12px 12px 0;
+    padding: 10px 12px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.18);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar__inflight-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-accent, #6366f1);
+}
+
+.sidebar__inflight-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.sidebar__inflight-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(99, 102, 241, 0.25);
+    border-top-color: var(--color-accent, #6366f1);
+    border-radius: 50%;
+    animation: inflight-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes inflight-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.sidebar__inflight-text {
+    font-size: 12px;
+    color: var(--color-text-secondary, #94a3b8);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+}
+
+.sidebar__inflight-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--color-accent, #6366f1);
+    letter-spacing: 0.03em;
+}
+
 .sidebar__logout-btn {
     background: none;
     border: none;
@@ -282,10 +346,12 @@ body {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
     transition: transform 0.2s, box-shadow 0.2s;
 }
+
 .cerebro-map-banner:hover {
     transform: scale(1.008);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
 }
+
 .cerebro-map-banner__img {
     width: 100%;
     height: 100%;
@@ -293,6 +359,7 @@ body {
     object-position: center;
     display: block;
 }
+
 .cerebro-map-banner__overlay {
     position: absolute;
     bottom: 12px;
@@ -312,6 +379,7 @@ body {
     transition: opacity 0.2s;
     pointer-events: none;
 }
+
 .cerebro-map-banner:hover .cerebro-map-banner__overlay {
     opacity: 1;
 }
@@ -1019,7 +1087,7 @@ body {
 }
 
 .inbox-sidebar {
-    width: 30%;
+    width: 35%;
     min-width: 280px;
     height: 100vh;
     border-left: 1px solid var(--color-border);
@@ -1100,7 +1168,7 @@ body {
 .capture-box__toolbar {
     display: flex;
     align-items: center;
-    padding: 10px 14px;
+    padding: 5px 7px;
     border-top: 1px solid var(--color-border-light);
     gap: 6px;
 }
@@ -1184,9 +1252,41 @@ body {
     gap: 10px;
 }
 
-.ai-proposal-box {
+/* Outer wrapper for both awaiting + processed columns */
+.inbox-activity-wrapper {
     display: flex;
-    flex-direction: row !important;
+    flex-direction: row;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.inbox-activity-wrapper>* {
+    min-width: 0;
+}
+
+.inbox-processed-section {
+    flex: 0 0 45%;
+    max-width: 45%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.inbox-awaiting-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-proposal-box2,
+.ai-proposal-box3,
+.ai-proposal-box4 {
+    display: flex;
+    flex-direction: column !important;
+}
+
+
+.ai-proposal-box__header {
+    flex-direction: column !important;
 }
 
 .ai-proposal-box__header {
@@ -1213,6 +1313,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .inbox-item__type-badge {
@@ -1230,13 +1332,16 @@ body {
     font-size: 14px;
     font-weight: 600;
     color: var(--color-text-primary);
-    word-break: break-all;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .inbox-item__link {
     font-size: 12px;
     color: var(--color-primary);
     text-decoration: none;
+    word-break: break-all;
+    overflow-wrap: anywhere;
 }
 
 .inbox-item__link:hover {
@@ -1385,31 +1490,256 @@ body {
 }
 
 /* =====================================================
-   Responsive
+   Mobile bottom navigation (hidden on desktop)
    ===================================================== */
-@media (max-width: 900px) {
+.mobile-bottom-nav {
+    display: none;
+}
+
+/* =====================================================
+   Responsive — tablet ≤ 768px
+   ===================================================== */
+@media (max-width: 768px) {
+
+    /* ── Hide desktop sidebar, show bottom nav ── */
+    .sidebar {
+        display: none;
+    }
+
+    .app-layout {
+        flex-direction: column;
+    }
+
+    .main-content {
+        height: calc(100vh - 60px);
+        height: calc(100dvh - 60px);
+    }
+
+    /* ── Mobile bottom tab bar ── */
+    .mobile-bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: var(--color-surface);
+        border-top: 1px solid var(--color-border);
+        z-index: 1000;
+        padding: 0 4px;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .mobile-nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        text-decoration: none;
+        color: var(--color-text-muted);
+        font-size: 10px;
+        font-weight: 500;
+        position: relative;
+        transition: color 0.15s;
+        padding: 6px 0;
+    }
+
+    .mobile-nav-item svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .mobile-nav-item.active {
+        color: var(--color-primary);
+    }
+
+    .mobile-nav-badge {
+        position: absolute;
+        top: 4px;
+        right: calc(50% - 18px);
+        background: var(--color-danger);
+        color: #fff;
+        border-radius: 999px;
+        padding: 0 5px;
+        font-size: 9px;
+        font-weight: 700;
+        min-width: 16px;
+        text-align: center;
+        line-height: 16px;
+    }
+
+    /* ── Page header ── */
+    .page-header {
+        padding: 20px 16px 0;
+    }
+
+    .page-header__title {
+        font-size: 20px;
+    }
+
+    /* ── Inbox layout ── */
+    .inbox-layout {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .inbox-main {
+        padding: 16px 14px 80px;
+    }
+
     .inbox-sidebar {
         display: none;
     }
 
+    /* ── Capture box ── */
+    .capture-box__textarea {
+        min-height: 72px;
+        padding: 12px;
+        font-size: 14px;
+    }
+
+    /* ── Cerebro page ── */
     .cerebro-page {
-        padding: 20px 16px 40px;
+        padding: 16px 14px 80px;
+    }
+
+    .cerebro-search-container {
+        flex-wrap: wrap;
+    }
+
+    .sort-options {
+        flex-wrap: wrap;
+    }
+
+    .cerebro-map-banner {
+        height: 140px;
+        margin-bottom: 20px;
+    }
+
+    .cerebro-layout {
+        flex-direction: column;
+    }
+
+    .tag-tree {
+        width: 100%;
+        position: static;
+    }
+
+    /* ── Notes grid ── */
+    .notes-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* ── Inbox activity: stack on mobile ── */
+    .inbox-activity-wrapper {
+        flex-direction: column !important;
+    }
+
+    .inbox-processed-section {
+        flex: unset;
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .inbox-awaiting-section {
+        width: 100%;
+    }
+
+    /* ── Inbox cards ── */
+    .inbox-item-card {
+        padding: 12px;
+    }
+
+    .inbox-item__text {
+        font-size: 13px;
+    }
+
+    .ai-action-btn {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+
+    .ai-action-btn--procesar {
+        min-width: 60px;
+        padding: 5px 8px;
+    }
+
+    .ai-proposal-box__path {
+        gap: 3px;
+    }
+
+    /* ── Pagination ── */
+    .pagination-controls {
+        flex-wrap: wrap;
+        justify-content: center;
     }
 }
 
-@media (max-width: 640px) {
-    .sidebar {
-        width: 60px;
+/* =====================================================
+   Responsive — small phone ≤ 480px
+   ===================================================== */
+@media (max-width: 480px) {
+    .inbox-main {
+        padding: 12px 10px 80px;
     }
 
-    .sidebar__brand-text,
-    .sidebar__nav-item span,
-    .sidebar__badge {
-        display: none;
+    .page-header__title {
+        font-size: 18px;
     }
 
-    .main-content {
-        padding-left: 0;
+    .page-header__subtitle {
+        font-size: 12px;
+    }
+
+    .cerebro-page {
+        padding: 12px 10px 80px;
+    }
+
+    .capture-box__textarea {
+        min-height: 60px;
+        padding: 10px;
+        font-size: 13px;
+    }
+
+    .cerebro-map-banner {
+        height: 110px;
+        border-radius: 10px;
+    }
+
+    /* ── Cards even more compact ── */
+    .inbox-item-card {
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    .ai-proposal-box,
+    .ai-proposal-box2,
+    .ai-proposal-box3,
+    .ai-proposal-box4,
+    .ai-proposal-box5 {
+        padding: 8px 10px;
+        border-radius: 8px;
+    }
+
+    .inbox-processed-section {
+        max-width: 100%;
+    }
+
+    /* Cards: tighter layout */
+    .inbox-item-card {
+        gap: 4px;
+    }
+
+    .ai-summary-box {
+        padding: 10px;
+    }
+
+    .ai-summary-box__content {
+        font-size: 12px;
+        max-height: 200px;
     }
 }
 
@@ -1599,7 +1929,10 @@ body {
 }
 
 /* Caja “Propuesta de la IA”: volver a columna, compacta y alineada */
-.inbox-item-card--approval .ai-proposal-box {
+.inbox-item-card--approval,
+.ai-proposal-box,
+.ai-proposal-box2,
+.ai-proposal-box3 {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -1622,6 +1955,10 @@ body {
     color: var(--color-primary);
 }
 
+.ai-proposal-box__label {
+    flex-direction: row !important;
+}
+
 /* “72% conf.” como pill */
 .inbox-item-card--approval .ai-proposal-box__conf {
     margin-left: auto;
@@ -1634,13 +1971,8 @@ body {
     border-radius: 999px;
 }
 
-/* Chips (TagChip) con wrap cómodo */
-.inbox-item-card--approval .ai-proposal-box__path {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-    margin-top: 7px;
+.ai-proposal-box__path {
+    padding-top: 10px;
 }
 
 /* Motivo: más legible y menos “cursi” */
@@ -1934,8 +2266,15 @@ body {
 }
 
 @keyframes fv-panel-in {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .fv-summary-panel__header {
@@ -1988,6 +2327,11 @@ body {
 }
 
 @media (max-width: 600px) {
-    .fv-note-row__tags { display: none; }
-    .view-mode-toggle { display: flex; }
+    .fv-note-row__tags {
+        display: none;
+    }
+
+    .view-mode-toggle {
+        display: flex;
+    }
 }

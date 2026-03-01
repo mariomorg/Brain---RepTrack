@@ -105,6 +105,39 @@ textarea {
 
 
 
+/* ── Quick URL Row ── */
+.quick-url-row {
+  margin-bottom: 6px;
+}
+
+.secondary-btn {
+  width: 100%;
+  padding: 8px 0;
+  border-radius: 8px;
+  border: 1px solid #2d2d4a;
+  background: #1e2030;
+  color: #c4b5fd;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  letter-spacing: 0.02em;
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: #272941;
+  border-color: #6366f1;
+}
+
+.secondary-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Actions ── */
 .actions {
   margin-top: 12px;

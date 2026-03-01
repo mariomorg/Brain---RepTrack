@@ -289,3 +289,15 @@
     color: var(--color-text-muted);
     margin-bottom: 12px;
 }
+
+/* ─── Mobile responsive ─── */
+
+@media (max-width: 768px) {
+    .config-page {
+        padding: 16px 14px 80px;
+    }
+
+    .config-header h1 {
+        font-size: 20px;
+    }
+}

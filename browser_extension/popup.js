@@ -8,6 +8,7 @@ const btnText = sendBtn.querySelector(".btn-text");
 const btnLoading = sendBtn.querySelector(".btn-loading");
 const feedback = document.getElementById("feedback");
 const badge = document.getElementById("pending-badge");
+const sendUrlBtn = document.getElementById("send-url-btn");
 
 // ── Init: populate from current tab ──
 document.addEventListener("DOMContentLoaded", async () => {
@@ -15,7 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Get current tab info
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-        if (tab?.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("chrome-extension://")) {
+        if (tab?.url && (tab.url.startsWith("http://") || tab.url.startsWith("https://"))) {
             // Try to get selected text from the page
             try {
                 const [result] = await chrome.scripting.executeScript({
@@ -56,6 +57,73 @@ async function loadPendingCount() {
         }
     } catch (e) {
         // API not reachable, ignore
+    }
+}
+
+// ── Send URL of current page ──
+sendUrlBtn.addEventListener("click", handleSendUrl);
+
+async function handleSendUrl() {
+    clearFeedback();
+    sendUrlBtn.disabled = true;
+    sendUrlBtn.textContent = "Enviando...";
+
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        const url = tab?.url ?? "";
+        const isWebUrl = url.startsWith("http://") || url.startsWith("https://");
+
+        if (!isWebUrl) {
+            const reason = !url
+                ? "No hay pestaña activa"
+                : url.startsWith("chrome://") || url.startsWith("chrome-extension://")
+                    ? "Las páginas internas de Chrome no se pueden capturar"
+                    : url.startsWith("file://")
+                        ? "Los archivos locales no se pueden capturar (actívalo en chrome://extensions)"
+                        : "Solo se pueden capturar páginas web (http/https)";
+            showFeedback(`✗ ${reason}`, "error");
+            return;
+        }
+
+        const content = tab.title ? `${tab.title}\n${tab.url}` : tab.url;
+
+        const res = await fetch(`${API_BASE}/capture`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                content,
+                contentType: "LINK",
+                sourceUrl: tab.url,
+                metadata: {
+                    capturedFrom: "browser_extension_quick_url",
+                    capturedAt: new Date().toISOString(),
+                    pageTitle: tab.title || "",
+                },
+            }),
+        });
+
+        if (res.ok) {
+            const json = await res.json();
+            const item = json.data ?? json;
+            showFeedback(`✓ URL capturada — ${item.detectedType ?? "guardado"}`, "success");
+            loadPendingCount();
+            setTimeout(() => window.close(), 1200);
+        } else {
+            const errText = await res.text();
+            let msg = "Error al enviar";
+            try {
+                const errJson = JSON.parse(errText);
+                msg = errJson.message || errJson.error || msg;
+            } catch (_) { }
+            showFeedback(`✗ ${msg}`, "error");
+        }
+    } catch (err) {
+        showFeedback("✗ No se pudo conectar al servidor", "error");
+        console.error("Send URL error:", err);
+    } finally {
+        sendUrlBtn.disabled = false;
+        sendUrlBtn.textContent = "🔗 Enviar URL de esta página";
     }
 }
 

@@ -2,7 +2,9 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
 import Layout from './shared/components/Layout';
-import InboxPage from './features/inbox/components/InboxPage';
+import InboxPage, { PendingApprovalCard, ProcessedCard } from './features/inbox/components/InboxPage';
+import { useInbox } from './features/inbox/hooks/useInbox';
+import { InFlightProvider } from './features/inbox/context/InFlightContext';
 
 import CerebroPage from './features/cerebro/components/CerebroPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
@@ -19,6 +21,7 @@ import ShareTargetPage from './pages/ShareTargetPage';
 import { MapCanvas } from './components/MapCanvas';
 import { SidePanel } from './components/SidePanel';
 import { IdeaPopup } from './components/IdeaPopup';
+import ProcessingNotification from './components/ProcessingNotification';
 import { TagNode, Idea, ROOT_COLORS } from './mockData';
 import { fetchMapData } from './features/map/services/mapService';
 
@@ -46,9 +49,11 @@ const MapPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 240 parece el ancho del sidebar/layout; ajusta si cambia
-  const canvasWidth = Math.max(300, width - 240);
-  const canvasHeight = Math.max(300, height);
+  // On mobile (≤768px) the sidebar is hidden, so use full width.
+  // On desktop, subtract the sidebar width (240px).
+  const isMobile = width <= 768;
+  const canvasWidth = Math.max(300, isMobile ? width : width - 240);
+  const canvasHeight = Math.max(300, isMobile ? height - 60 : height);
 
   const [camera, setCamera] = React.useState({ x: 0, y: 0, zoom: 0.08 });
   const initialZoom = React.useRef(0.08);
@@ -59,6 +64,9 @@ const MapPage: React.FC = () => {
   const [popupIdea, setPopupIdea] = React.useState<Idea | null>(null);
   const [visibleTags, setVisibleTags] = React.useState<TagNode[]>([]);
   const [visibleIdeas, setVisibleIdeas] = React.useState<Idea[]>([]);
+  const [lightMode, setLightMode] = React.useState(() =>
+    localStorage.getItem('map-light-mode') === 'true'
+  );
 
   // Cargar datos del mapa
   React.useEffect(() => {
@@ -167,6 +175,7 @@ const MapPage: React.FC = () => {
             height={canvasHeight}
             resetViewSignal={resetViewSignal}
             initialZoom={initialZoom.current}
+            lightMode={lightMode}
           />
 
           <button
@@ -214,6 +223,59 @@ const MapPage: React.FC = () => {
             Vista general
           </button>
 
+          {/* Botón modo claro / oscuro del mapa */}
+          <button
+            onClick={() => {
+              const next = !lightMode;
+              setLightMode(next);
+              localStorage.setItem('map-light-mode', String(next));
+            }}
+            title={lightMode ? 'Cambiar a fondo oscuro' : 'Cambiar a fondo blanco'}
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: 160,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              background: lightMode ? 'rgba(255,255,255,0.92)' : 'rgba(20,22,40,0.80)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              border: lightMode ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 12,
+              boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              color: lightMode ? '#1a1a2e' : '#e8eaf6',
+              letterSpacing: 0.2,
+              transition: 'background 0.2s, color 0.2s, border 0.2s',
+              zIndex: 10,
+            }}
+          >
+            {lightMode ? (
+              /* luna — cambiar a oscuro */
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />
+              </svg>
+            ) : (
+              /* sol — cambiar a claro */
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" />
+                <line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </svg>
+            )}
+            {lightMode ? 'Oscuro' : 'Claro'}
+          </button>
+
           <SidePanel
             selectedTag={selectedTag}
             selectedIdea={selectedIdea}
@@ -236,6 +298,130 @@ const MapPage: React.FC = () => {
     </div>
   );
 };
+
+function HomeRedesigned() {
+  const { pendingItems, processedItems, loading, remove, procesar, reprocess, createMarkdown } = useInbox();
+
+  const [processingIds, setProcessingIds] = React.useState<Set<string>>(new Set());
+  const [markdownCreatingIds, setMarkdownCreatingIds] = React.useState<Set<string>>(new Set());
+  const [processResults, setProcessResults] = React.useState<Record<string, any>>({});
+  const [showProcessingNotification, setShowProcessingNotification] = React.useState(false);
+
+  const handleProcesar = async (id: string) => {
+    setProcessingIds((prev) => new Set(prev).add(id));
+    setShowProcessingNotification(true);
+    try {
+      const result = await procesar(id);
+      setProcessResults((prev) => ({ ...prev, [id]: result }));
+    } finally {
+      setProcessingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setTimeout(() => setShowProcessingNotification(false), 2000);
+    }
+  };
+
+  const handleReprocess = (id: string) => {
+    void reprocess(id);
+  };
+
+  const handleRemove = (id: string) => {
+    remove(id);
+  };
+
+  const handleCreateMarkdown = async (id: string) => {
+    setMarkdownCreatingIds((prev) => new Set(prev).add(id));
+    try {
+      await createMarkdown(id);
+    } finally {
+      setMarkdownCreatingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleSuggestion = () => { };
+
+  let pendientesContent;
+  if (loading) {
+    pendientesContent = <div className="inbox-empty">Cargando…</div>;
+  } else if (pendingItems.length === 0) {
+    pendientesContent = <div className="inbox-empty">No hay elementos pendientes.</div>;
+  } else {
+    // Solo mostrar los que están en AWAITING_APPROVAL
+    const awaitingApproval = pendingItems.filter(item => item.status === 'AWAITING_APPROVAL');
+    pendientesContent = awaitingApproval.length === 0 ? (
+      <div className="inbox-empty">No hay elementos pendientes.</div>
+    ) : (
+      <div className="inbox-list">
+        {awaitingApproval.map((item) => (
+          <PendingApprovalCard
+            key={item.id}
+            item={item}
+            onProcesar={() => handleProcesar(item.id)}
+            onReprocess={() => handleReprocess(item.id)}
+            onRemove={() => handleRemove(item.id)}
+            processing={processingIds.has(item.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  let procesadosContent;
+  if (loading || processingIds.size > 0) {
+    procesadosContent = <div className="inbox-empty">{loading ? 'Cargando…' : 'Procesando…'}</div>;
+  } else if (processedItems.length === 0) {
+    procesadosContent = <div className="inbox-empty">No hay elementos procesados.</div>;
+  } else {
+    procesadosContent = (
+      <div className="inbox-list">
+        {processedItems.map((item) => (
+          <ProcessedCard
+            key={item.id}
+            item={item}
+            suggestions={processResults[item.id]?.suggestions ?? []}
+            onReprocess={() => handleReprocess(item.id)}
+            onCreateMarkdown={() => handleCreateMarkdown(item.id)}
+            onRemove={() => handleRemove(item.id)}
+            onSuggestion={handleSuggestion}
+            creatingMarkdown={markdownCreatingIds.has(item.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="inbox-page">
+      <header className="inbox-header">
+        <h1>Inbox Unificado</h1>
+        <p>Captura rápida de cualquier contenido. Sin pensar, sin clasificar.</p>
+      </header>
+
+      <div className="inbox-columns">
+        <section className="inbox-col">
+          <h2 className="inbox-col-title">
+            Pendientes <span className="inbox-count inbox-count-pending">({pendingItems.length})</span>
+          </h2>
+          {pendientesContent}
+        </section>
+
+        <section className="inbox-col">
+          <h2 className="inbox-col-title">
+            Procesados <span className="inbox-count inbox-count-processed">({processedItems.length})</span>
+          </h2>
+          {procesadosContent}
+        </section>
+      </div>
+      <ProcessingNotification open={showProcessingNotification} onClose={() => setShowProcessingNotification(false)} />
+    </div>
+  );
+}
 
 /** Wrapper that redirects to /login when not authenticated */
 function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -276,7 +462,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <InFlightProvider>
+          <AppRoutes />
+        </InFlightProvider>
         <PWAUpdatePrompt />
       </AuthProvider>
     </BrowserRouter>

@@ -7,6 +7,8 @@ import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.inbox.client.TranscriptionClient;
+import com.brainreptrack.note.domain.Note;
+import com.brainreptrack.note.repository.NoteRepository;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
@@ -16,8 +18,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 public class InboxItemServiceImpl implements InboxItemService {
 
     private final InboxItemRepository repository;
+    private final NoteRepository noteRepository;
     private final AiProcessingService aiProcessingService;
     private final ContentTypeDetector contentTypeDetector;
     private final TranscriptionClient transcriptionClient;
@@ -93,16 +94,12 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .build();
         InboxItem saved = repository.save(entity);
 
-        // 6. Schedule async AI processing after commit
-        UUID savedId = saved.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                aiProcessingService.processAsync(savedId);
-            }
-        });
+        // 6. Run AI classification synchronously (tags + type only, no summary).
+        // Since the item lives in the current persistence context,
+        // processInCurrentTransaction can find it without a commit.
+        aiProcessingService.processInCurrentTransaction(saved.getId());
 
-        log.info("[Capture] Saved InboxItem {} (type={}, sourceUrl={})",
+        log.info("[Capture] Saved & classified InboxItem {} (type={}, sourceUrl={})",
                 saved.getId(), detected, sourceUrl);
         return toDto(saved);
     }
@@ -128,15 +125,8 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .outputPath(dto.getOutputPath())
                 .build();
         InboxItem saved = repository.save(entity);
-        // Schedule async AI analysis to run AFTER this transaction commits,
-        // so the row is visible to the background thread when it queries the DB.
-        UUID savedId = saved.getId();
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                aiProcessingService.processAsync(savedId);
-            }
-        });
+        // Run AI classification synchronously within the current transaction
+        aiProcessingService.processInCurrentTransaction(saved.getId());
         return toDto(saved);
     }
 
@@ -202,6 +192,12 @@ public class InboxItemServiceImpl implements InboxItemService {
     @Override
     public void delete(UUID id) {
         findOrThrow(id);
+        // Unlink any notes that reference this inbox item before deleting
+        List<Note> linkedNotes = noteRepository.findByInboxItem_Id(id);
+        for (Note note : linkedNotes) {
+            note.setInboxItem(null);
+            noteRepository.save(note);
+        }
         repository.deleteById(id);
     }
 

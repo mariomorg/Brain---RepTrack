@@ -51,6 +51,15 @@ public interface AiProcessingService {
     ProcessResultDto processItem(UUID inboxItemId);
 
     /**
+     * Synchronous processing that participates in the caller's existing
+     * transaction (propagation = REQUIRED). Use this when the InboxItem
+     * has just been saved but not yet committed — e.g. inside capture().
+     *
+     * @param inboxItemId id of the InboxItem to process
+     */
+    void processInCurrentTransaction(UUID inboxItemId);
+
+    /**
      * Generates a well-structured Markdown document from the inbox item's rawText
      * and its existing AI classification (proposalsJson).
      * The item status is NOT changed – this is a non-destructive read + AI call.
