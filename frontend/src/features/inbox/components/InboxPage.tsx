@@ -1177,7 +1177,7 @@ export default function InboxPage() {
                 .ai-summary-box__content {
                     font-size: 13px;
                     line-height: 1.6;
-                    color: #000;
+                    color: var(--color-text-primary, #1a1a2e);
                     white-space: pre-line;
                     max-height: 300px;
                     overflow-y: auto;
@@ -1229,7 +1229,7 @@ export default function InboxPage() {
                     background: rgba(16,185,129,.15); color: #10b981; margin-left: 6px;
                 }
                    .processed-actions {
-                    display: flex; gap: 8px; margin-top: 8px; width: 50%; margin-left: auto; margin-right: auto;
+                    display: flex; gap: 8px; margin-top: 8px; width: 100%; max-width: 300px; margin-left: auto; margin-right: auto;
                 }
 
                 /* ── Pagination ── */
@@ -1360,15 +1360,6 @@ export default function InboxPage() {
                                 <FileIcon />
                             </button>
 
-                            {/* Image button */}
-                            <button
-                                className="capture-toolbar-btn"
-                                title="Adjuntar imagen"
-                                onClick={() => imageInputRef.current?.click()}
-                            >
-                                <ImageIcon />
-                            </button>
-
                             {/* Mic button */}
                             <button
                                 className={`capture-toolbar-btn${recording ? ' mic-active' : ''}`}
@@ -1425,7 +1416,7 @@ export default function InboxPage() {
                         return (
                             <>
                                 {/* ── Items awaiting user action — "Procesar" button ── */}
-                                <div className="ai-proposal-box">
+                                <div className="inbox-activity-wrapper">
                                     {awaitingItems.length > 0 && (() => {
                                         const awTotalPages = Math.ceil(awaitingItems.length / AWAITING_PAGE_SIZE);
                                         const awPageItems = awaitingItems.slice(
@@ -1434,7 +1425,7 @@ export default function InboxPage() {
                                         );
                                         return (
                                             <>
-                                                <div className="ai-proposal-box__header">
+                                                <div className="inbox-awaiting-section">
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 8px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-accent, #6366f1)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
                                                             <BrainIcon /> Listos para procesar
@@ -1492,7 +1483,7 @@ export default function InboxPage() {
                                             (processedPage + 1) * PROCESSED_PAGE_SIZE
                                         );
                                         return (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: '50%' }}>
+                                            <div className="inbox-processed-section">
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--color-text-muted, #94a3b8)', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>
                                                     <CheckIcon /> Procesados recientemente
                                                     <span style={{ fontWeight: 400, fontSize: 11, textTransform: 'none' }}>({processedItems.length})</span>

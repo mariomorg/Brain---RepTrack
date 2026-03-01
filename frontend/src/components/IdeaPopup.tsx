@@ -21,35 +21,82 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
     year: 'numeric',
   });
 
+  // Detectar si es móvil
+  const [isMobile, setIsMobile] = React.useState(window.innerWidth <= 768);
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Estilos del panel: lateral en desktop, bottom-sheet en móvil
+  const panelStyle: React.CSSProperties = isMobile
+    ? {
+      position: 'fixed',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      maxHeight: '70vh',
+      zIndex: 50,
+      background: 'rgba(10,12,24,0.97)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      borderTop: `1.5px solid ${accentColor}33`,
+      borderRadius: '18px 18px 0 0',
+      boxShadow: `0 -8px 40px rgba(0,0,0,0.45)`,
+      display: 'flex',
+      flexDirection: 'column',
+      animation: 'slideInBottom 0.3s cubic-bezier(0.22,1,0.36,1)',
+      overflowY: 'auto',
+    }
+    : {
+      position: 'fixed',
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 'min(340px, 85vw)',
+      zIndex: 50,
+      background: 'rgba(10,12,24,0.97)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      borderLeft: `1.5px solid ${accentColor}33`,
+      boxShadow: `-8px 0 40px rgba(0,0,0,0.45)`,
+      display: 'flex',
+      flexDirection: 'column',
+      animation: 'slideInRight 0.25s cubic-bezier(0.22,1,0.36,1)',
+      overflowY: 'auto',
+    };
+
   return (
     <>
-      {/* Panel lateral deslizante — no bloquea el mapa */}
+      {/* Panel — lateral en desktop, bottom-sheet en móvil */}
       <div
-        style={{
-          position: 'fixed',
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 'min(340px, 85vw)',
-          zIndex: 50,
-          background: 'rgba(10,12,24,0.97)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          borderLeft: `1.5px solid ${accentColor}33`,
-          boxShadow: `-8px 0 40px rgba(0,0,0,0.45)`,
-          display: 'flex',
-          flexDirection: 'column',
-          animation: 'slideInRight 0.25s cubic-bezier(0.22,1,0.36,1)',
-          overflowY: 'auto',
-        }}
+        style={panelStyle}
         onClick={e => e.stopPropagation()}
       >
+        {/* Drag handle para móvil */}
+        {isMobile && (
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '10px 0 4px',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              background: 'rgba(255,255,255,0.25)',
+            }} />
+          </div>
+        )}
+
         {/* Barra de color superior */}
         <div style={{
           height: 3,
@@ -137,7 +184,7 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
         }} />
 
         {/* Cuerpo */}
-        <div style={{ flex: 1, padding: '16px 20px 36px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ flex: 1, padding: '16px 20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
           {/* Tags */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -175,13 +222,13 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
             }}>
               <ReactMarkdown
                 components={{
-                  h1: ({children}) => <p style={{ margin: '6px 0 2px', fontSize: 13, fontWeight: 700, color: '#d0d0e8' }}>{children}</p>,
-                  h2: ({children}) => <p style={{ margin: '6px 0 2px', fontSize: 12.5, fontWeight: 700, color: '#c8c8e0' }}>{children}</p>,
-                  h3: ({children}) => <p style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, color: '#b8b8d8' }}>{children}</p>,
-                  p:  ({children}) => <p style={{ margin: '4px 0', color: '#a0a0b8' }}>{children}</p>,
-                  strong: ({children}) => <strong style={{ color: '#d8d8f0', fontWeight: 600 }}>{children}</strong>,
-                  ul: ({children}) => <ul style={{ margin: '4px 0', paddingLeft: 16 }}>{children}</ul>,
-                  li: ({children}) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                  h1: ({ children }) => <p style={{ margin: '6px 0 2px', fontSize: 13, fontWeight: 700, color: '#d0d0e8' }}>{children}</p>,
+                  h2: ({ children }) => <p style={{ margin: '6px 0 2px', fontSize: 12.5, fontWeight: 700, color: '#c8c8e0' }}>{children}</p>,
+                  h3: ({ children }) => <p style={{ margin: '4px 0 2px', fontSize: 12, fontWeight: 600, color: '#b8b8d8' }}>{children}</p>,
+                  p: ({ children }) => <p style={{ margin: '4px 0', color: '#a0a0b8' }}>{children}</p>,
+                  strong: ({ children }) => <strong style={{ color: '#d8d8f0', fontWeight: 600 }}>{children}</strong>,
+                  ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 16 }}>{children}</ul>,
+                  li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
                 }}
               >
                 {idea.aiSummary}
@@ -193,7 +240,8 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
           <button
             onClick={() => onNavigate(idea)}
             style={{
-              marginTop: 'auto',
+              marginTop: 12,
+              marginBottom: isMobile ? 80 : 24,
               padding: '11px 0',
               borderRadius: 12,
               border: 'none',
@@ -217,6 +265,10 @@ export const IdeaPopup: React.FC<IdeaPopupProps> = ({
         @keyframes slideInRight {
           from { transform: translateX(100%); opacity: 0 }
           to   { transform: translateX(0);    opacity: 1 }
+        }
+        @keyframes slideInBottom {
+          from { transform: translateY(100%); opacity: 0 }
+          to   { transform: translateY(0);    opacity: 1 }
         }
       `}</style>
     </>

@@ -58,6 +58,8 @@ interface MapCanvasProps {
   resetViewSignal?: number;
   /** Zoom inicial al que vuelve "Vista general" */
   initialZoom?: number;
+  /** Modo fondo blanco con contraste alto */
+  lightMode?: boolean;
 }
 
 /** Returns the world-space radius of a tag node. Always uses the precomputed radius. */
@@ -81,6 +83,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   height,
   resetViewSignal = 0,
   initialZoom = 0.08,
+  lightMode = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number | null>(null);
@@ -103,21 +106,21 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
   // Animación basada en tiempo (ease-out) para clicks en tag
   const anim = useRef<{
     startZoom: number; endZoom: number;
-    startX: number;   endX: number;
-    startY: number;   endY: number;
+    startX: number; endX: number;
+    startY: number; endY: number;
     startTime: number; duration: number;
     active: boolean;
   }>({
     startZoom: camera.zoom, endZoom: camera.zoom,
-    startX: camera.x,       endX: camera.x,
-    startY: camera.y,       endY: camera.y,
+    startX: camera.x, endX: camera.x,
+    startY: camera.y, endY: camera.y,
     startTime: 0, duration: 0, active: false,
   });
 
   // Para detectar resets externos del padre (botón "Vista general", etc.)
   const lastSetZoom = useRef(camera.zoom);
-  const lastSetX    = useRef(camera.x);
-  const lastSetY    = useRef(camera.y);
+  const lastSetX = useRef(camera.x);
+  const lastSetY = useRef(camera.y);
 
   // Pin hover
   const hoveredIdea = useRef<string | null>(null);
@@ -131,31 +134,38 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     const ctx: CanvasRenderingContext2D = rawCtx;
     ctx.clearRect(0, 0, width, height);
 
-    // ── Fondo oscuro degradado ───────────────────────────────────────────────
-    const bgGrad = ctx.createRadialGradient(
-      width / 2, height / 2, 0,
-      width / 2, height / 2,
-      Math.max(width, height) * 0.75
-    );
-    bgGrad.addColorStop(0, '#1a1d2e');
-    bgGrad.addColorStop(1, '#0d0f1a');
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, width, height);
+    // ── Fondo ───────────────────────────────────────────────────────────────
+    if (lightMode) {
+      // Fondo blanco liso
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      // Fondo oscuro degradado
+      const bgGrad = ctx.createRadialGradient(
+        width / 2, height / 2, 0,
+        width / 2, height / 2,
+        Math.max(width, height) * 0.75
+      );
+      bgGrad.addColorStop(0, '#1a1d2e');
+      bgGrad.addColorStop(1, '#0d0f1a');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
 
-    // Estrellas de fondo (posición determinista por seed)
-    ctx.save();
-    const starCount = 120;
-    for (let i = 0; i < starCount; i++) {
-      const sx = ((i * 2971 + 13) % width);
-      const sy = ((i * 1873 + 7) % height);
-      const sr = (i % 3 === 0) ? 1.2 : 0.6;
-      const sa = 0.2 + (i % 5) * 0.07;
-      ctx.beginPath();
-      ctx.arc(sx, sy, sr, 0, 2 * Math.PI);
-      ctx.fillStyle = `rgba(255,255,255,${sa})`;
-      ctx.fill();
+      // Estrellas de fondo (posición determinista por seed)
+      ctx.save();
+      const starCount = 120;
+      for (let i = 0; i < starCount; i++) {
+        const sx = ((i * 2971 + 13) % width);
+        const sy = ((i * 1873 + 7) % height);
+        const sr = (i % 3 === 0) ? 1.2 : 0.6;
+        const sa = 0.2 + (i % 5) * 0.07;
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(255,255,255,${sa})`;
+        ctx.fill();
+      }
+      ctx.restore();
     }
-    ctx.restore();
 
     const MAX_LEVEL = 3;
 
@@ -199,44 +209,76 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       ctx.arc(sc.x, sc.y, screenR, 0, 2 * Math.PI);
 
       if (level === 0) {
-        // Gradiente radial tipo planeta
-        const grad = ctx.createRadialGradient(
-          sc.x - screenR * 0.35, sc.y - screenR * 0.35, screenR * 0.05,
-          sc.x, sc.y, screenR
-        );
-        grad.addColorStop(0, color + 'bb');
-        grad.addColorStop(0.5, color + '88');
-        grad.addColorStop(1, color + 'cc');
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.shadowColor = color;
-        ctx.shadowBlur = Math.max(20, screenR * 0.10);
-        ctx.lineWidth = Math.max(2, screenR * 0.007);
-        ctx.strokeStyle = color + 'ff';
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        // Halo exterior tenue
-        ctx.beginPath();
-        ctx.arc(sc.x, sc.y, screenR * 1.04, 0, 2 * Math.PI);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = color + '33';
-        ctx.stroke();
+        if (lightMode) {
+          // Relleno sólido con opacidad alta para contraste sobre blanco
+          const grad = ctx.createRadialGradient(
+            sc.x - screenR * 0.35, sc.y - screenR * 0.35, screenR * 0.05,
+            sc.x, sc.y, screenR
+          );
+          grad.addColorStop(0, color + 'cc');
+          grad.addColorStop(0.5, color + 'aa');
+          grad.addColorStop(1, color + 'dd');
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.lineWidth = Math.max(2.5, screenR * 0.008);
+          ctx.strokeStyle = color + 'ff';
+          ctx.stroke();
+        } else {
+          // Gradiente radial tipo planeta
+          const grad = ctx.createRadialGradient(
+            sc.x - screenR * 0.35, sc.y - screenR * 0.35, screenR * 0.05,
+            sc.x, sc.y, screenR
+          );
+          grad.addColorStop(0, color + 'bb');
+          grad.addColorStop(0.5, color + '88');
+          grad.addColorStop(1, color + 'cc');
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.shadowColor = color;
+          ctx.shadowBlur = Math.max(20, screenR * 0.10);
+          ctx.lineWidth = Math.max(2, screenR * 0.007);
+          ctx.strokeStyle = color + 'ff';
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          // Halo exterior tenue
+          ctx.beginPath();
+          ctx.arc(sc.x, sc.y, screenR * 1.04, 0, 2 * Math.PI);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = color + '33';
+          ctx.stroke();
+        }
       } else if (level === 1) {
-        // Casi transparente — sólo se ve el borde, el interior queda limpio
-        ctx.fillStyle = color + '18';
-        ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = color + 'cc';
-        ctx.shadowColor = color + '55';
-        ctx.shadowBlur = 8;
-        ctx.stroke();
-        ctx.shadowBlur = 0;
+        if (lightMode) {
+          ctx.fillStyle = color + '28';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = color + 'ee';
+          ctx.stroke();
+        } else {
+          // Casi transparente — sólo se ve el borde, el interior queda limpio
+          ctx.fillStyle = color + '18';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = color + 'cc';
+          ctx.shadowColor = color + '55';
+          ctx.shadowBlur = 8;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
       } else {
-        ctx.fillStyle = color + '12';
-        ctx.fill();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = color + '99';
-        ctx.stroke();
+        if (lightMode) {
+          ctx.fillStyle = color + '1a';
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = color + 'bb';
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = color + '12';
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = color + '99';
+          ctx.stroke();
+        }
       }
 
       ctx.restore();
@@ -277,15 +319,27 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
         if (level === 0) {
           ctx.font = `800 ${fontSize}px system-ui, sans-serif`;
-          ctx.shadowColor = 'rgba(0,0,0,0.9)';
-          ctx.shadowBlur = fontSize * 0.9;
-          ctx.fillStyle = '#ffffff';
+          if (lightMode) {
+            ctx.shadowColor = 'rgba(255,255,255,0.9)';
+            ctx.shadowBlur = fontSize * 0.6;
+            ctx.fillStyle = '#111111';
+          } else {
+            ctx.shadowColor = 'rgba(0,0,0,0.9)';
+            ctx.shadowBlur = fontSize * 0.9;
+            ctx.fillStyle = '#ffffff';
+          }
           ctx.fillText(label, sc.x, sc.y);
         } else {
           ctx.font = `700 ${fontSize}px system-ui, sans-serif`;
-          ctx.shadowColor = 'rgba(0,0,0,0.85)';
-          ctx.shadowBlur = fontSize * 0.5;
-          ctx.fillStyle = '#f4f4f4';
+          if (lightMode) {
+            ctx.shadowColor = 'rgba(255,255,255,0.8)';
+            ctx.shadowBlur = fontSize * 0.4;
+            ctx.fillStyle = '#222222';
+          } else {
+            ctx.shadowColor = 'rgba(0,0,0,0.85)';
+            ctx.shadowBlur = fontSize * 0.5;
+            ctx.fillStyle = '#f4f4f4';
+          }
           ctx.fillText(label, sc.x, sc.y);
         }
         ctx.restore();
@@ -302,7 +356,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     // Los pins sólo aparecen cuando hay suficiente zoom para ver el interior
     // de un subtag — evita que se mezclen con los círculos de nivel 0/1
     const PIN_ZOOM_START = 0.70;
-    const PIN_ZOOM_FULL  = 1.00;
+    const PIN_ZOOM_FULL = 1.00;
     const pinGlobalAlpha = Math.min(
       1,
       Math.max(0, (camera.zoom - PIN_ZOOM_START) / (PIN_ZOOM_FULL - PIN_ZOOM_START))
@@ -349,13 +403,15 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         // Círculo principal
         ctx.beginPath();
         ctx.arc(x, y, pinR, 0, 2 * Math.PI);
-        ctx.fillStyle = isHovered ? '#fff0f1' : '#ffffff';
-        ctx.shadowColor = pinColor;
-        ctx.shadowBlur = isHovered ? 16 : 8;
+        ctx.fillStyle = isHovered ? '#fff0f1' : (lightMode ? '#f8f8f8' : '#ffffff');
+        if (!lightMode) {
+          ctx.shadowColor = pinColor;
+          ctx.shadowBlur = isHovered ? 16 : 8;
+        }
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.strokeStyle = pinColor;
-        ctx.lineWidth = isHovered ? 2 : 1.5;
+        ctx.lineWidth = isHovered ? 2 : (lightMode ? 2 : 1.5);
         ctx.stroke();
 
         // Punto interior
@@ -378,10 +434,12 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           const ly = y - pH / 2;
 
           ctx.globalAlpha = pinGlobalAlpha * effectiveAlpha;
-          ctx.fillStyle = isHovered ? 'rgba(244,91,105,0.92)' : 'rgba(8,10,20,0.80)';
-          ctx.strokeStyle = isHovered ? 'transparent' : (pinColor + '55');
+          ctx.fillStyle = isHovered
+            ? 'rgba(244,91,105,0.92)'
+            : (lightMode ? 'rgba(240,242,248,0.95)' : 'rgba(8,10,20,0.80)');
+          ctx.strokeStyle = isHovered ? 'transparent' : (pinColor + (lightMode ? 'aa' : '55'));
           ctx.lineWidth = 0.8;
-          ctx.shadowColor = 'rgba(0,0,0,0.4)';
+          ctx.shadowColor = lightMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.4)';
           ctx.shadowBlur = isHovered ? 10 : 6;
           ctx.beginPath();
           ctx.roundRect(lx, ly, pW, pH, pH / 2);
@@ -389,7 +447,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
           if (!isHovered) ctx.stroke();
           ctx.shadowBlur = 0;
 
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = isHovered ? '#ffffff' : (lightMode ? '#111111' : '#ffffff');
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
           ctx.fillText(idea.title, lx + 6, ly + pH / 2);
@@ -461,7 +519,7 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         ctx.restore();
       }
     }
-  }, [camera, tags, ideas, width, height, selectedIdea]);
+  }, [camera, tags, ideas, width, height, selectedIdea, lightMode]);
 
   // Cuando el padre resetea la cámara externamente (p.ej. botón Vista general),
   // Cuando el padre resetea la cámara externamente (botón "Vista general", etc.)
@@ -472,8 +530,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     const cam = camera;
     const isExternalChange =
       Math.abs(cam.zoom - lastSetZoom.current) > 0.001 ||
-      Math.abs(cam.x    - lastSetX.current)    > 1 ||
-      Math.abs(cam.y    - lastSetY.current)    > 1;
+      Math.abs(cam.x - lastSetX.current) > 1 ||
+      Math.abs(cam.y - lastSetY.current) > 1;
 
     externalCameraRef.current = cam;
 
@@ -481,14 +539,14 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       // Cancelar animación en curso y saltar al nuevo valor
       anim.current.active = false;
       targetZoom.current = cam.zoom;
-      targetX.current    = cam.x;
-      targetY.current    = cam.y;
+      targetX.current = cam.x;
+      targetY.current = cam.y;
       lastSetZoom.current = cam.zoom;
-      lastSetX.current    = cam.x;
-      lastSetY.current    = cam.y;
-      fastAnim.current    = false;
+      lastSetX.current = cam.x;
+      lastSetY.current = cam.y;
+      fastAnim.current = false;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camera]);
 
   // Cuando el padre incrementa resetViewSignal, lanzamos animación hacia el zoom inicial
@@ -501,26 +559,26 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     let fromY: number;
     if (anim.current.active) {
       const elapsed = performance.now() - anim.current.startTime;
-      const raw  = Math.min(elapsed / anim.current.duration, 1);
+      const raw = Math.min(elapsed / anim.current.duration, 1);
       const ease = 1 - Math.pow(1 - raw, 3);
       fromZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
-      fromX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
-      fromY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+      fromX = anim.current.startX + (anim.current.endX - anim.current.startX) * ease;
+      fromY = anim.current.startY + (anim.current.endY - anim.current.startY) * ease;
     } else {
       fromZoom = cameraRef.current.zoom;
-      fromX    = cameraRef.current.x;
-      fromY    = cameraRef.current.y;
+      fromX = cameraRef.current.x;
+      fromY = cameraRef.current.y;
     }
 
     anim.current = {
       startZoom: fromZoom, endZoom: initialZoom,
-      startX:    fromX,    endX:    0,
-      startY:    fromY,    endY:    0,
+      startX: fromX, endX: 0,
+      startY: fromY, endY: 0,
       startTime: performance.now(),
-      duration:  750,
-      active:    true,
+      duration: 750,
+      active: true,
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetViewSignal]);
 
   // Redibuja en cada frame + animación de cámara
@@ -537,30 +595,30 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
 
       const cam = cameraRef.current;
       let newZoom = cam.zoom;
-      let newX    = cam.x;
-      let newY    = cam.y;
+      let newX = cam.x;
+      let newY = cam.y;
       let changed = false;
 
       // ── Animación basada en tiempo (clicks en tag) ───────────────────────
       if (anim.current.active) {
         const elapsed = now - anim.current.startTime;
-        const raw     = Math.min(elapsed / anim.current.duration, 1);
-        const ease    = easeOutExpo(raw);
+        const raw = Math.min(elapsed / anim.current.duration, 1);
+        const ease = easeOutExpo(raw);
 
         newZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
-        newX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
-        newY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+        newX = anim.current.startX + (anim.current.endX - anim.current.startX) * ease;
+        newY = anim.current.startY + (anim.current.endY - anim.current.startY) * ease;
         changed = true;
 
         if (raw >= 1) {
           anim.current.active = false;
           newZoom = anim.current.endZoom;
-          newX    = anim.current.endX;
-          newY    = anim.current.endY;
+          newX = anim.current.endX;
+          newY = anim.current.endY;
           // Sincronizar targets para que el lerp del scroll no interfiera
           targetZoom.current = newZoom;
-          targetX.current    = newX;
-          targetY.current    = newY;
+          targetX.current = newX;
+          targetY.current = newY;
         }
       } else {
         // ── Lerp suave para scroll/pan ────────────────────────────────────
@@ -569,16 +627,16 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
         const ty = targetY.current;
         if (Math.abs(cam.zoom - tz) > 0.0005 || Math.abs(cam.x - tx) > 0.3 || Math.abs(cam.y - ty) > 0.3) {
           newZoom = cam.zoom + (tz - cam.zoom) * 0.25;
-          newX    = cam.x    + (tx - cam.x)    * 0.25;
-          newY    = cam.y    + (ty - cam.y)    * 0.25;
+          newX = cam.x + (tx - cam.x) * 0.25;
+          newY = cam.y + (ty - cam.y) * 0.25;
           changed = true;
         }
       }
 
       if (changed) {
         lastSetZoom.current = newZoom;
-        lastSetX.current    = newX;
-        lastSetY.current    = newY;
+        lastSetX.current = newX;
+        lastSetY.current = newY;
         setCamera({ zoom: newZoom, x: newX, y: newY });
       }
 
@@ -645,8 +703,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       const newY = cameraRef.current.y - dy;
       setCamera({ ...cameraRef.current, x: newX, y: newY });
       lastSetZoom.current = cameraRef.current.zoom;
-      lastSetX.current    = newX;
-      lastSetY.current    = newY;
+      lastSetX.current = newX;
+      lastSetY.current = newY;
       targetX.current = newX;
       targetY.current = newY;
 
@@ -697,8 +755,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     targetX.current = newX;
     targetY.current = newY;
     lastSetZoom.current = cam.zoom;
-    lastSetX.current    = newX;
-    lastSetY.current    = newY;
+    lastSetX.current = newX;
+    lastSetY.current = newY;
     setCamera({ zoom: cam.zoom, x: newX, y: newY });
   };
 
@@ -728,8 +786,8 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
     targetX.current = newX;
     targetY.current = newY;
     lastSetZoom.current = cam.zoom;
-    lastSetX.current    = newX;
-    lastSetY.current    = newY;
+    lastSetX.current = newX;
+    lastSetY.current = newY;
     setCamera({ zoom: cam.zoom, x: newX, y: newY });
   };
 
@@ -753,7 +811,9 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       onFocusTag(tag);
 
       const worldR = tag.radius ?? 300;
-      const endZoom = Math.min(20, Math.min(width, height) / (worldR * 1.8));
+      // Avance gradual: zoom para que el círculo ocupe ~50% de la pantalla
+      // en vez de ~90%, así se ven los hijos sin saltar niveles
+      const endZoom = Math.min(20, Math.min(width, height) / (worldR * 3.2));
 
       // Si hay animación en curso, calcular la posición real interpolada en este instante
       // para arrancar desde ahí sin salto brusco
@@ -762,24 +822,24 @@ export const MapCanvas: React.FC<MapCanvasProps> = ({
       let fromY: number;
       if (anim.current.active) {
         const elapsed = performance.now() - anim.current.startTime;
-        const raw  = Math.min(elapsed / anim.current.duration, 1);
+        const raw = Math.min(elapsed / anim.current.duration, 1);
         const ease = 1 - Math.pow(1 - raw, 3);
         fromZoom = anim.current.startZoom + (anim.current.endZoom - anim.current.startZoom) * ease;
-        fromX    = anim.current.startX    + (anim.current.endX    - anim.current.startX)    * ease;
-        fromY    = anim.current.startY    + (anim.current.endY    - anim.current.startY)    * ease;
+        fromX = anim.current.startX + (anim.current.endX - anim.current.startX) * ease;
+        fromY = anim.current.startY + (anim.current.endY - anim.current.startY) * ease;
       } else {
         fromZoom = cameraRef.current.zoom;
-        fromX    = cameraRef.current.x;
-        fromY    = cameraRef.current.y;
+        fromX = cameraRef.current.x;
+        fromY = cameraRef.current.y;
       }
 
       anim.current = {
         startZoom: fromZoom, endZoom,
-        startX:    fromX,    endX: tag.x,
-        startY:    fromY,    endY: tag.y,
+        startX: fromX, endX: tag.x,
+        startY: fromY, endY: tag.y,
         startTime: performance.now(),
-        duration:  1000,
-        active:    true,
+        duration: 1000,
+        active: true,
       };
     }
   };

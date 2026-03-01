@@ -204,6 +204,31 @@ function Layout({ children }: Readonly<LayoutProps>) {
       <main className="main-content">
         {children}
       </main>
+
+      {/* Mobile bottom navigation */}
+      <nav className="mobile-bottom-nav">
+        <NavLink to="/inbox" className={({ isActive }) => 'mobile-nav-item' + (isActive ? ' active' : '')}>
+          <InboxIcon />
+          <span>Inbox</span>
+          {pendingCount > 0 && <span className="mobile-nav-badge">{pendingCount}</span>}
+        </NavLink>
+        <NavLink to="/cerebro" className={({ isActive }) => 'mobile-nav-item' + (isActive ? ' active' : '')}>
+          <BrainIcon />
+          <span>Cerebro</span>
+        </NavLink>
+        <NavLink to="/mapa" className={({ isActive }) => 'mobile-nav-item' + (isActive ? ' active' : '')}>
+          <MapIcon />
+          <span>Mapa</span>
+        </NavLink>
+        <NavLink to="/calendario" className={({ isActive }) => 'mobile-nav-item' + (isActive ? ' active' : '')}>
+          <CalendarIcon />
+          <span>Calendario</span>
+        </NavLink>
+        <NavLink to="/configuracion" className={({ isActive }) => 'mobile-nav-item' + (isActive ? ' active' : '')}>
+          <SettingsIcon />
+          <span>Ajustes</span>
+        </NavLink>
+      </nav>
     </div>
   );
 }

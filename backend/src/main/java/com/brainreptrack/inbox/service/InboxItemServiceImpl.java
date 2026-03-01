@@ -7,6 +7,8 @@ import com.brainreptrack.inbox.dto.InboxItemRequestDto;
 import com.brainreptrack.inbox.dto.InboxItemResponseDto;
 import com.brainreptrack.inbox.repository.InboxItemRepository;
 import com.brainreptrack.inbox.client.TranscriptionClient;
+import com.brainreptrack.note.domain.Note;
+import com.brainreptrack.note.repository.NoteRepository;
 import com.brainreptrack.processing.dto.ProcessResultDto;
 import com.brainreptrack.processing.service.AiProcessingService;
 import com.brainreptrack.shared.exception.ResourceNotFoundException;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 public class InboxItemServiceImpl implements InboxItemService {
 
     private final InboxItemRepository repository;
+    private final NoteRepository noteRepository;
     private final AiProcessingService aiProcessingService;
     private final ContentTypeDetector contentTypeDetector;
     private final TranscriptionClient transcriptionClient;
@@ -189,6 +192,12 @@ public class InboxItemServiceImpl implements InboxItemService {
     @Override
     public void delete(UUID id) {
         findOrThrow(id);
+        // Unlink any notes that reference this inbox item before deleting
+        List<Note> linkedNotes = noteRepository.findByInboxItem_Id(id);
+        for (Note note : linkedNotes) {
+            note.setInboxItem(null);
+            noteRepository.save(note);
+        }
         repository.deleteById(id);
     }
 

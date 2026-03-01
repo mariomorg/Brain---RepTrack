@@ -11,16 +11,18 @@ export default function ResourceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [note, setNote]                       = useState<Note | null>(null);
+  const [note, setNote] = useState<Note | null>(null);
   const [similaresConTags, setSimilaresConTags] = useState<Note[]>([]);
-  const [loading, setLoading]                 = useState(true);
-  const [error, setError]                     = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Edición ──────────────────────────────────────────────
-  const [editing, setEditing]         = useState(false);
-  const [editTitle, setEditTitle]     = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
   const [editSummary, setEditSummary] = useState('');
-  const [saving, setSaving]           = useState(false);
+  const [editTags, setEditTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // ── Reinterpretar ─────────────────────────────────────────
   const [reinterpreting, setReinterpreting] = useState(false);
@@ -62,6 +64,8 @@ export default function ResourceDetailPage() {
     if (!note) return;
     setEditTitle(note.title);
     setEditSummary(note.aiSummary ?? '');
+    setEditTags(note.tags?.map(t => t.name) ?? []);
+    setTagInput('');
     setEditing(true);
   };
 
@@ -72,6 +76,7 @@ export default function ResourceDetailPage() {
       const updated = await noteService.update(id, {
         title: editTitle,
         aiSummary: editSummary,
+        tags: editTags.map(name => ({ name })),
       });
       setNote(updated);
       setEditing(false);
@@ -105,8 +110,8 @@ export default function ResourceDetailPage() {
   };
 
   if (loading) return <div style={{ padding: 32 }}>Cargando recurso…</div>;
-  if (error)   return <div style={{ padding: 32, color: 'red' }}>Error: {error}</div>;
-  if (!note)   return <div style={{ padding: 32 }}>Recurso no encontrado.</div>;
+  if (error) return <div style={{ padding: 32, color: 'red' }}>Error: {error}</div>;
+  if (!note) return <div style={{ padding: 32 }}>Recurso no encontrado.</div>;
 
   return (
     <div className="resource-detail-layout">
@@ -133,7 +138,52 @@ export default function ResourceDetailPage() {
         </div>
 
         {/* Tags */}
-        {note.tags?.length > 0 && (
+        {editing ? (
+          <div className="tag-editor">
+            <div className="tag-editor__chips">
+              {editTags.map(tag => (
+                <span key={tag} className="tag-editor__chip">
+                  {tag}
+                  <button
+                    type="button"
+                    className="tag-editor__chip-remove"
+                    onClick={() => setEditTags(prev => prev.filter(t => t !== tag))}
+                    aria-label={`Quitar tag ${tag}`}
+                  >×</button>
+                </span>
+              ))}
+            </div>
+            <div className="tag-editor__input-row">
+              <input
+                className="tag-editor__input"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+                    e.preventDefault();
+                    const newTag = tagInput.trim().replace(/,$/, '');
+                    if (newTag && !editTags.includes(newTag)) {
+                      setEditTags(prev => [...prev, newTag]);
+                    }
+                    setTagInput('');
+                  }
+                }}
+                placeholder="Nuevo tag (Enter para añadir)"
+              />
+              <button
+                type="button"
+                className="tag-editor__add-btn"
+                onClick={() => {
+                  const newTag = tagInput.trim();
+                  if (newTag && !editTags.includes(newTag)) {
+                    setEditTags(prev => [...prev, newTag]);
+                  }
+                  setTagInput('');
+                }}
+              >+ Añadir</button>
+            </div>
+          </div>
+        ) : note.tags?.length > 0 && (
           <div style={{ margin: '8px 0 16px 0', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {note.tags.map(tag => (
               <span key={tag.name} style={{

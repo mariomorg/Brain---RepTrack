@@ -713,39 +713,6 @@ INSERT INTO notes (id, title, path, type, summary, confidence_score, created_at,
 ON CONFLICT (id) DO NOTHING;
 
 -- =========================================================
---  Actualizar inbox_item_id en notas seed que tienen temática
---  coincidente con los nuevos inbox_items de mds reales
--- =========================================================
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000042'
-  WHERE id IN ('10000000-0000-0000-0000-000000000032',   -- Reinforcement Learning: Q-Learning
-               '10000000-0000-0000-0000-000000000033');  -- TensorFlow: redes neuronales
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000044'
-  WHERE id IN ('10000000-0000-0000-0000-000000000502',   -- Gestión de la ansiedad
-               '10000000-0000-0000-0000-000000000511');  -- Higiene del sueño
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000045'
-  WHERE id IN ('10000000-0000-0000-0000-000000000521',   -- Dieta mediterránea: evidencia
-               '10000000-0000-0000-0000-000000000522');  -- Ayuno intermitente 16:8
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000035'
-  WHERE id IN ('10000000-0000-0000-0000-000000000403',   -- Cómo elegir alojamiento en viajes
-               '10000000-0000-0000-0000-000000000412');  -- Hostels: cómo elegir el mejor
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000036'
-  WHERE id = '10000000-0000-0000-0000-000000000402';     -- Planificación de rutas Google Maps
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000024'
-  WHERE id = '10000000-0000-0000-0000-000000000113';     -- Code Review efectivo → comunicación
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000049'
-  WHERE id = '10000000-0000-0000-0000-000000000012';     -- Spring Security → pom.xml/Java
-
-UPDATE notes SET inbox_item_id = '00000000-0000-0000-0000-000000000048'
-  WHERE id IN ('10000000-0000-0000-0000-000000000421',   -- Composición fotográfica básica
-               '10000000-0000-0000-0000-000000000422');  -- Edición con Lightroom
-
--- =========================================================
 --  Tags — registro jerárquico (L0 → L1 → L2, respeta FK parent)
 -- =========================================================
 INSERT INTO tags (name, parent_name) VALUES

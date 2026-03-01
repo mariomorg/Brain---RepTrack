@@ -24,6 +24,8 @@ public interface NoteRepository extends JpaRepository<Note, UUID> {
 
      boolean existsByInboxItem_Id(UUID inboxItemId);
 
+     List<Note> findByInboxItem_Id(UUID inboxItemId);
+
      /**
       * Returns true if a note with the exact path already exists above the
       * confidence threshold.

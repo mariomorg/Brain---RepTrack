@@ -379,7 +379,15 @@
 }
 
 /* ── Responsive ── */
-@media (max-width: 720px) {
+@media (max-width: 768px) {
+    .perfil-page {
+        padding: 16px 14px 80px;
+    }
+
+    .perfil-hero {
+        flex-wrap: wrap;
+    }
+
     .perfil-big-stats {
         grid-template-columns: repeat(2, 1fr);
     }
