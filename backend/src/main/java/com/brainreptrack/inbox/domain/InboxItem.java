@@ -58,6 +58,14 @@ public class InboxItem {
     @Column(name = "ai_summary", columnDefinition = "TEXT")
     private String aiSummary;
 
+    /**
+     * JSON blob with the calendar event extracted by the date-event extractor.
+     * Structure: {type, date, time, title, description}.
+     * null when no event was detected.
+     */
+    @Column(name = "calendar_event", columnDefinition = "TEXT")
+    private String calendarEvent;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

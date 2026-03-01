@@ -4,9 +4,18 @@ import { noteService } from '../services/noteService';
 
 export type SortOption = 'newest' | 'oldest' | 'alphabetical' | 'alphabetical-reverse' | 'none';
 
-/** Returns true if the note contains ALL of the active tags. */
+/** Returns true if the note contains ANY of the active tags (or a segment of a hierarchical tag). */
 function noteMatchesTags(note: Note, activeTags: string[]): boolean {
-    return activeTags.every(tag => note.tags.some(t => t.name === tag));
+    if (activeTags.length === 0) return true;
+    return activeTags.some(activeTag =>
+        note.tags.some(t => {
+            // Match full tag name
+            if (t.name === activeTag) return true;
+            // Match any segment of a hierarchical tag (e.g. "dev/frontend" matches segment "frontend")
+            const segments = t.name.split('/').filter(Boolean);
+            return segments.includes(activeTag);
+        })
+    );
 }
 
 export function useCerebro() {
@@ -17,7 +26,7 @@ export function useCerebro() {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTags, setActiveTags] = useState<string[]>([]);
-    const [sortBy, setSortBy] = useState<SortOption>('none');
+    const [sortBy, setSortBy] = useState<SortOption>('newest');
 
     // Paginación
     const [currentPage, setCurrentPage] = useState(1);
@@ -38,6 +47,10 @@ export function useCerebro() {
                 let result: Note[] = [];
                 if (searchQuery.trim()) {
                     result = await noteService.search(searchQuery.trim());
+                    // Si además hay tags activos, filtramos el resultado por tags
+                    if (activeTags.length > 0) {
+                        result = result.filter(note => noteMatchesTags(note, activeTags));
+                    }
                 } else if (activeTags.length > 0) {
                     // Obtener todas las notas y filtrar por tags en el cliente
                     const allNotes = await noteService.findAll();
@@ -103,6 +116,7 @@ export function useCerebro() {
     return {
         notes,
         filteredNotes: paginatedNotes,
+        allFilteredNotes: sortedNotes,
         tags,
         loading,
         error,

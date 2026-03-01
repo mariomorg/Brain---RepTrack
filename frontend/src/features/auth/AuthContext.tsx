@@ -17,6 +17,8 @@ interface AuthContextType {
   register: (username: string, email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
   refreshProfile: () => Promise<void>;
+  saveAuth: (token: string, user: AuthUser) => void;
+  loginWithGithub: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -111,6 +113,16 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     }
   }, [saveAuth]);
 
+  // Helpers para obtener la URL base del backend
+  const getBackendUrl = () => import.meta.env.VITE_API_BASE_URL
+    ? (import.meta.env.VITE_API_BASE_URL as string).replace('/api', '')
+    : 'http://localhost:8080';
+
+  // Inicia el flujo OAuth2 con GitHub
+  const loginWithGithub = useCallback(() => {
+    window.location.href = `${getBackendUrl()}/api/auth/oauth2/github`;
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (!token) return;
     try {
@@ -139,8 +151,8 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, []);
 
   const value = useMemo(() => ({
-    user, token, loading, login, register, logout, refreshProfile
-  }), [user, token, loading, login, register, logout, refreshProfile]);
+    user, token, loading, login, register, logout, refreshProfile, saveAuth, loginWithGithub
+  }), [user, token, loading, login, register, logout, refreshProfile, saveAuth, loginWithGithub]);
 
   return (
     <AuthContext.Provider value={value}>

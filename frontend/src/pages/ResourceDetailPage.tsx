@@ -195,24 +195,18 @@ export default function ResourceDetailPage() {
       </main>
 
       <aside className="resource-detail-aside">
-        {/* Imagen del mapa — clickable */}
+        {/* Foto estática del mapa — clickable → /mapa */}
         <div
-          className="aside-map-img-wrap"
-          onClick={() => note && navigate(`/mapa?ideaId=${note.id}`)}
-          title="Ver en el mapa"
+          className="aside-map-static"
+          onClick={() => navigate(`/mapa?ideaId=${note.id}`)}
+          title="Abrir mapa completo"
         >
-          <img src="/map-preview.png" alt="Vista previa del mapa" />
+          <img src="/map-galaxy.png" alt="Mapa de conocimiento" />
+          <div className="aside-map-static__hint">Ver en mapa</div>
         </div>
 
         {/* Botones de acción */}
         <div className="aside-actions">
-          <button
-            className="aside-btn-primary"
-            type="button"
-            onClick={() => note && navigate(`/mapa?ideaId=${note.id}`)}
-          >
-            Ver en mapa
-          </button>
           <button
             className="aside-btn-secondary"
             type="button"

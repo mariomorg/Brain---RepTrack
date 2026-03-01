@@ -219,6 +219,7 @@ public class InboxItemServiceImpl implements InboxItemService {
                 .aiSummary(e.getAiSummary())
                 .createdAt(e.getCreatedAt())
                 .processedAt(e.getProcessedAt())
+                .calendarEvent(e.getCalendarEvent())
                 .build();
     }
 }

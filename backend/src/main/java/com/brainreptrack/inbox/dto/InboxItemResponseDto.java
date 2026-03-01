@@ -22,4 +22,10 @@ public class InboxItemResponseDto {
     private String aiSummary;
     private LocalDateTime createdAt;
     private LocalDateTime processedAt;
+
+    /**
+     * JSON blob with the extracted calendar event, or null when none was detected.
+     * Clients should parse this as: {type, date, time, title, description}.
+     */
+    private String calendarEvent;
 }

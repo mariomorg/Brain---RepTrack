@@ -47,6 +47,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
     private final SuggestionAnalyzer suggestionAnalyzer;
     private final SummaryGenerationService summaryGenerationService;
     private final TranscriptionClient transcriptionClient;
+    private final DateEventExtractorService dateEventExtractorService;
     private final Path markdownOutputDir;
 
     public AiProcessingServiceImpl(
@@ -58,6 +59,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             SuggestionAnalyzer suggestionAnalyzer,
             SummaryGenerationService summaryGenerationService,
             TranscriptionClient transcriptionClient,
+            DateEventExtractorService dateEventExtractorService,
             @Value("${markdown.output-dir:./markdown-notes}") String markdownOutputDirStr) {
         this.inboxItemRepository = inboxItemRepository;
         this.noteRepository = noteRepository;
@@ -67,6 +69,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
         this.suggestionAnalyzer = suggestionAnalyzer;
         this.summaryGenerationService = summaryGenerationService;
         this.transcriptionClient = transcriptionClient;
+        this.dateEventExtractorService = dateEventExtractorService;
         this.markdownOutputDir = Paths.get(markdownOutputDirStr);
         try {
             Files.createDirectories(this.markdownOutputDir);
@@ -185,6 +188,24 @@ public class AiProcessingServiceImpl implements AiProcessingService {
             // ── 5b. Summary generation DEFERRED to processItem() ─────────────
             // The extensive summary is now generated only when the user clicks
             // "Procesar", keeping the initial analysis fast (tags + type only).
+
+            // ── 5c. Extract calendar event (date / appointment detection) ──────────────────
+            try {
+                Map<String, Object> calEvent = dateEventExtractorService.extract(item.getRawText(), item.getCreatedAt());
+                String eventType = String.valueOf(calEvent.getOrDefault("type", "NONE"));
+                if ("DATE_EVENT".equals(eventType)) {
+                    String calJson = objectMapper.writeValueAsString(calEvent);
+                    item.setCalendarEvent(calJson);
+                    log.info("[AI] Calendar event detected for InboxItem {}: date={}, title={}",
+                            inboxItemId, calEvent.get("date"), calEvent.get("title"));
+                } else {
+                    log.debug("[AI] No calendar event in InboxItem {}", inboxItemId);
+                }
+            } catch (Exception calEx) {
+                log.warn("[AI] Calendar event extraction failed for InboxItem {}: {}",
+                        inboxItemId, calEx.getMessage());
+                // Non-fatal
+            }
 
             // ── 6. Mark as awaiting user approval ────────────────────────────────
             item.setStatus("AWAITING_APPROVAL");

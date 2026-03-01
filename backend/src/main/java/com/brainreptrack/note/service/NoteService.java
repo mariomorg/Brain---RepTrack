@@ -1,5 +1,6 @@
 package com.brainreptrack.note.service;
 
+import com.brainreptrack.note.dto.FolderSummaryRequestDto;
 import com.brainreptrack.note.dto.NoteRequestDto;
 import com.brainreptrack.note.dto.NoteResponseDto;
 
@@ -28,4 +29,10 @@ public interface NoteService {
 
     // 👇 ESTE iba fuera, ahora está bien
     List<NoteResponseDto> findSimilares(UUID id);
+
+    /**
+     * Generates an AI summary for all notes in a folder,
+     * using the Ollama LLM with each note's title and summary as context.
+     */
+    String generateFolderSummary(FolderSummaryRequestDto request);
 }

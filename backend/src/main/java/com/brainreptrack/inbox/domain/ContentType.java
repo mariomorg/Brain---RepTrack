@@ -36,7 +36,10 @@ public enum ContentType {
     FILE("Archivo adjunto"),
 
     /** Content captured from a browser extension. */
-    BROWSER_EXTENSION("Extensión del navegador");
+    BROWSER_EXTENSION("Extensión del navegador"),
+
+    /** A date, meeting, appointment or calendar event detected in the text. */
+    DATE_EVENT("Evento de calendario");
 
     private final String displayName;
 
