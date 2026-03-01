@@ -11,6 +11,7 @@ import ConfiguracionPage from './pages/ConfiguracionPage';
 import PerfilPage from './pages/PerfilPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OAuth2CallbackPage from './pages/OAuth2CallbackPage';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import PWAUpdatePrompt from './shared/components/PWAUpdatePrompt';
 import ShareTargetPage from './pages/ShareTargetPage';
@@ -364,6 +365,7 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/login" element={user ? <Navigate to="/inbox" replace /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/inbox" replace /> : <RegisterPage />} />
+      <Route path="/oauth2/callback" element={<OAuth2CallbackPage />} />
       <Route path="/share-target" element={<ShareTargetPage />} />
 
       {/* Protected routes — wrapped in Layout */}

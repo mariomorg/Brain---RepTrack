@@ -17,4 +17,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
+
+    // OAuth2: busca por provider + subject (ID inmutable del proveedor)
+    Optional<User> findByOauth2ProviderAndOauth2Subject(String oauth2Provider, String oauth2Subject);
 }
