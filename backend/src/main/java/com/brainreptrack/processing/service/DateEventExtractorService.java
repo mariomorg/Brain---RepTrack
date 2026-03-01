@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
@@ -50,7 +51,7 @@ public class DateEventExtractorService {
             "   - \"el 3 de marzo\"\n" +
             "   - etc.\n\n" +
             "4. Usa como fecha actual de referencia:\n" +
-            "   {{CURRENT_DATE}}\n\n" +
+            "   {{CURRENT_DATE}} ({{CURRENT_WEEKDAY}})\n\n" +
             "5. Si la fecha es ambigua, asume la próxima ocurrencia futura.\n\n" +
             "6. Devuelve SIEMPRE únicamente JSON válido.\n" +
             "   NO incluyas explicaciones.\n" +
@@ -76,15 +77,22 @@ public class DateEventExtractorService {
     /**
      * Analyses {@code rawText} for calendar events.
      *
-     * @param rawText the inbox item content
+     * @param rawText   the inbox item content
+     * @param createdAt the timestamp when the inbox item was created; used as
+     *                  the reference date for resolving relative expressions
+     *                  like "el martes" or "mañana". Falls back to today if null.
      * @return a map with keys: type, date, time, title, description
      *         Always non-null; type will be "NONE" when no event is detected.
      */
-    public Map<String, Object> extract(String rawText) {
-        String currentDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+    public Map<String, Object> extract(String rawText, LocalDateTime createdAt) {
+        LocalDate referenceDate = (createdAt != null) ? createdAt.toLocalDate() : LocalDate.now();
+        String currentDate = referenceDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String currentWeekday = referenceDate.getDayOfWeek()
+                .getDisplayName(java.time.format.TextStyle.FULL, new java.util.Locale("es", "ES"));
 
         String userPrompt = USER_PROMPT_TEMPLATE
                 .replace("{{CURRENT_DATE}}", currentDate)
+                .replace("{{CURRENT_WEEKDAY}}", currentWeekday)
                 .replace("{{INBOX_CONTENT}}", rawText != null ? rawText : "");
 
         try {

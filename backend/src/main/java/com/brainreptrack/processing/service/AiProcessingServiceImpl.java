@@ -195,7 +195,7 @@ public class AiProcessingServiceImpl implements AiProcessingService {
 
             // ── 5c. Extract calendar event (date / appointment detection) ──────────────────
             try {
-                Map<String, Object> calEvent = dateEventExtractorService.extract(item.getRawText());
+                Map<String, Object> calEvent = dateEventExtractorService.extract(item.getRawText(), item.getCreatedAt());
                 String eventType = String.valueOf(calEvent.getOrDefault("type", "NONE"));
                 if ("DATE_EVENT".equals(eventType)) {
                     String calJson = objectMapper.writeValueAsString(calEvent);
