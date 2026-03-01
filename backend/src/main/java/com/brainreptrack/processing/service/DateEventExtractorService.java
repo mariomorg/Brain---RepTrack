@@ -23,10 +23,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DateEventExtractorService {
 
-    private static final String SYSTEM_PROMPT =
-            "Eres un sistema profesional de extracción estructurada de eventos. " +
-            "Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown.";
-
     private static final String USER_PROMPT_TEMPLATE =
             "Tu tarea es analizar un texto proveniente del inbox de un usuario y detectar si contiene una fecha o una cita.\n\n" +
             "INSTRUCCIONES:\n\n" +
