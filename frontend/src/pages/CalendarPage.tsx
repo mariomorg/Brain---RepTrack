@@ -29,6 +29,14 @@ const XIcon = () => (
         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
 );
+const DownloadIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+);
 
 /* ─────────────────────────── Helpers ─────────────────────────── */
 const MONTH_NAMES = [
@@ -57,6 +65,96 @@ function formatEventTime(time: string | null): string {
     return time ?? '';
 }
 
+/* ─── Calendar export helpers ─── */
+
+/**
+ * Converts a YYYY-MM-DD + HH:MM pair to an iCal datetime string.
+ * If no time is provided, returns an all-day date string (YYYYMMDD).
+ */
+function toIcalDate(date: string, time: string | null): string {
+    const d = date.replace(/-/g, ''); // YYYYMMDD
+    if (!time) return d;
+    const t = time.replace(':', '') + '00'; // HHMMSS
+    return `${d}T${t}`;
+}
+
+/** Generates and triggers download of a .ics file for one event. */
+function downloadIcs(event: CalendarEvent): void {
+    if (!event.date) return;
+    const uid = `brainreptrack-${event.inboxItemId}@local`;
+    const now = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
+    const hasTime = Boolean(event.time);
+    const dtStart = hasTime
+        ? `DTSTART:${toIcalDate(event.date, event.time)}`
+        : `DTSTART;VALUE=DATE:${toIcalDate(event.date, null)}`;
+    // Default duration: 1 hour when time is specified, all-day otherwise
+    const dtEnd = hasTime
+        ? (() => {
+            const [h, m] = (event.time ?? '00:00').split(':').map(Number);
+            const end = new Date(`${event.date}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+            end.setHours(end.getHours() + 1);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `DTEND:${event.date.replace(/-/g,'')}T${pad(end.getHours())}${pad(end.getMinutes())}00`;
+        })()
+        : `DTEND;VALUE=DATE:${toIcalDate(event.date, null)}`;
+
+    const ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//BrainRepTrack//ES',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTAMP:${now}`,
+        dtStart,
+        dtEnd,
+        `SUMMARY:${(event.title ?? 'Evento').replace(/\n/g, '\\n')}`,
+        event.description ? `DESCRIPTION:${event.description.replace(/\n/g, '\\n')}` : '',
+        'END:VEVENT',
+        'END:VCALENDAR',
+    ].filter(Boolean).join('\r\n');
+
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(event.title ?? 'evento').replace(/\s+/g, '_')}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/** Builds a Google Calendar "add event" URL. */
+function googleCalendarUrl(event: CalendarEvent): string {
+    if (!event.date) return '#';
+    const hasTime = Boolean(event.time);
+    const fmt = (date: string, time: string | null) =>
+        hasTime ? `${date.replace(/-/g,'')}T${(time ?? '00:00').replace(':','')}00` : date.replace(/-/g,'');
+
+    const start = fmt(event.date, event.time);
+    // End = start + 1 h when timed, next day when all-day
+    let end: string;
+    if (hasTime) {
+        const [h, m] = (event.time ?? '00:00').split(':').map(Number);
+        const endDate = new Date(`${event.date}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`);
+        endDate.setHours(endDate.getHours() + 1);
+        const pad = (n: number) => String(n).padStart(2,'0');
+        end = `${event.date.replace(/-/g,'')}T${pad(endDate.getHours())}${pad(endDate.getMinutes())}00`;
+    } else {
+        const next = new Date(event.date + 'T00:00:00');
+        next.setDate(next.getDate() + 1);
+        end = next.toISOString().slice(0,10).replace(/-/g,'');
+    }
+
+    const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: event.title ?? 'Evento',
+        dates: `${start}/${end}`,
+        details: event.description ?? '',
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 /* ─────────────────────────── Event Detail Modal ─────────────────────────── */
 function EventDetailModal({ event, onClose }: Readonly<{ event: CalendarEvent; onClose: () => void }>) {
     const dateStr = event.date
@@ -81,6 +179,35 @@ function EventDetailModal({ event, onClose }: Readonly<{ event: CalendarEvent; o
                 {event.description && (
                     <div className="cal-modal-desc">{event.description}</div>
                 )}
+
+                {/* ── Export actions ── */}
+                {event.date && (
+                    <div className="cal-modal-export">
+                        <span className="cal-modal-export-label">Añadir al calendario</span>
+                        <div className="cal-modal-export-btns">
+                            <a
+                                className="cal-export-btn cal-export-btn--google"
+                                href={googleCalendarUrl(event)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                {/* Google Calendar color logo */}
+                                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path fill="#4285F4" d="M22 12.5C22 6.977 17.523 2.5 12 2.5S2 6.977 2 12.5c0 4.99 3.657 9.128 8.438 9.878v-6.987H7.898V12.5h2.54V10.26c0-2.508 1.493-3.891 3.776-3.891 1.094 0 2.24.195 2.24.195v2.46h-1.264c-1.24 0-1.628.772-1.628 1.563V12.5h2.773l-.443 2.891h-2.33v6.987C18.343 21.628 22 17.49 22 12.5z"/>
+                                </svg>
+                                Google Calendar
+                            </a>
+                            <button
+                                className="cal-export-btn cal-export-btn--ics"
+                                onClick={() => downloadIcs(event)}
+                            >
+                                <DownloadIcon />
+                                Apple / Outlook (.ics)
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div className="cal-modal-raw-label">Texto original</div>
                 <div className="cal-modal-raw">{event.rawText}</div>
             </div>
@@ -180,7 +307,9 @@ export default function CalendarPage() {
                             const key = cellDateKey(day);
                             const cellDate = new Date(year, month, day);
                             const isToday = isSameDay(cellDate, today);
-                            const cellEvents = eventsByDate[key] ?? [];
+                            const cellEvents = (eventsByDate[key] ?? [])
+                                .slice()
+                                .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
 
                             return (
                                 <div

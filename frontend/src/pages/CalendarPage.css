@@ -415,3 +415,70 @@
     word-break: break-word;
     line-height: 1.55;
 }
+
+/* ─── Modal: export to calendar ─── */
+
+.cal-modal-export {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-md);
+}
+
+.cal-modal-export-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+}
+
+.cal-modal-export-btns {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cal-export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.cal-export-btn--google {
+    background: #fff;
+    color: #3c4043;
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-export-btn--google:hover {
+    background: #f8f9fa;
+    border-color: #4285F4;
+    box-shadow: 0 2px 8px rgba(66, 133, 244, 0.18);
+}
+
+.cal-export-btn--ics {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+    border-color: rgba(124, 58, 237, 0.2);
+}
+
+.cal-export-btn--ics:hover {
+    background: rgba(124, 58, 237, 0.15);
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.15);
+}
