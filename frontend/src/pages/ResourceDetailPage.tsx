@@ -198,7 +198,7 @@ export default function ResourceDetailPage() {
         {/* Foto estática del mapa — clickable → /mapa */}
         <div
           className="aside-map-static"
-          onClick={() => navigate('/mapa')}
+          onClick={() => navigate(`/mapa?ideaId=${note.id}`)}
           title="Abrir mapa completo"
         >
           <img src="/map-galaxy.png" alt="Mapa de conocimiento" />

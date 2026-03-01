@@ -99,9 +99,22 @@ const MapPage: React.FC = () => {
     const idea = visibleIdeas.find((i) => i.id === ideaId);
     if (idea) {
       setSelectedIdea(idea);
-      setSelectedTag(null);
-      setFocusTagPath(null);
-      setCamera({ x: idea.x, y: idea.y, zoom: 1 });
+      setPopupIdea(idea);
+      // Enfocar el tag principal de la idea para que aparezca resaltado
+      const primaryTag = idea.tagPaths?.[0] ?? null;
+      setFocusTagPath(primaryTag);
+      const parentTag = visibleTags.find(t => t.path === primaryTag) ?? null;
+      setSelectedTag(parentTag);
+      // Centrar en el tag padre (burbuja grande)
+      const cx = parentTag ? parentTag.x : idea.x;
+      const cy = parentTag ? parentTag.y : idea.y;
+      // Zoom dinámico: que la burbuja quepa en pantalla con margen
+      // Si no hay tag padre usamos un radio estimado de 300
+      const tagR = parentTag?.radius ?? 300;
+      const fitZoom = Math.min(canvasWidth, canvasHeight) / (tagR * 2) * 0.75;
+      // Mínimo 0.8 para que los pins sean visibles, máximo 1.6 para no estar demasiado cerca
+      const zoom = Math.min(1.6, Math.max(0.8, fitZoom));
+      setCamera({ x: cx, y: cy, zoom });
     }
   }, [location.search, visibleIdeas]);
 
