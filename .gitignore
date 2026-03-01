@@ -3,10 +3,17 @@ backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 !backend/.mvn/wrapper/maven-wrapper.properties
 
+# Backend - secrets
+backend/src/main/resources/application.properties
+
+backend/uploads/
+
 # Frontend - Node
 frontend/node_modules/
 frontend/dist/
+frontend/dev-dist/
 frontend/.vite/
+frontend/package-lock.json
 
 # IDE
 .idea/
@@ -14,10 +21,12 @@ frontend/.vite/
 .vscode/
 *.swp
 *.swo
-
+node_modules
 # OS
 .DS_Store
 Thumbs.db
 
 # Logs
 *.log
+
+backend/markdown-notes/
