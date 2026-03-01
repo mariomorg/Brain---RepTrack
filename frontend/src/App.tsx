@@ -12,6 +12,7 @@ import PerfilPage from './pages/PerfilPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OAuth2CallbackPage from './pages/OAuth2CallbackPage';
+import CalendarPage from './pages/CalendarPage';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import PWAUpdatePrompt from './shared/components/PWAUpdatePrompt';
 import ShareTargetPage from './pages/ShareTargetPage';
@@ -373,6 +374,7 @@ function AppRoutes() {
       <Route path="/inbox" element={<ProtectedRoute><Layout><InboxPage /></Layout></ProtectedRoute>} />
       <Route path="/cerebro" element={<ProtectedRoute><Layout><CerebroPage /></Layout></ProtectedRoute>} />
       <Route path="/mapa" element={<ProtectedRoute><Layout><MapPage /></Layout></ProtectedRoute>} />
+      <Route path="/calendario" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Layout><ConfiguracionPage /></Layout></ProtectedRoute>} />
       <Route path="/perfil" element={<ProtectedRoute><Layout><PerfilPage /></Layout></ProtectedRoute>} />
       <Route path="/recurso/:id" element={<ProtectedRoute><Layout><ResourceDetailPage /></Layout></ProtectedRoute>} />

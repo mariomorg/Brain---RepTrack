@@ -23,6 +23,8 @@ export interface InboxItem {
     sourceUrl: string | null;
     metadata: string | null;
     aiSummary: string | null;
+    /** JSON string: CalendarEvent | null */
+    calendarEvent: string | null;
     createdAt: string;
     processedAt: string | null;
 }
@@ -85,6 +87,24 @@ export interface AiClassification {
     motivo?: string;
     rationale?: string;
     paths?: Array<{ path: string; confidence: number }>;
+}
+
+/* ─── Calendar event extracted by the AI ─── */
+
+export type CalendarEventType = 'DATE_EVENT' | 'NONE';
+
+export interface CalendarEvent {
+    inboxItemId: string;
+    rawText: string;
+    type: CalendarEventType;
+    /** ISO-8601 date string (YYYY-MM-DD), or null */
+    date: string | null;
+    /** 24-h time (HH:MM), or null */
+    time: string | null;
+    title: string | null;
+    description: string | null;
+    /** ISO-8601 creation timestamp */
+    createdAt: string | null;
 }
 
 /* ─── Combined result from POST /procesar ─── */

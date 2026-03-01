@@ -47,6 +47,9 @@ ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS ai_summary   TEXT;
 -- Path to the original uploaded file (for FILE-type items)
 ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS file_path    VARCHAR(512);
 
+-- Extracted calendar event JSON (type, date, time, title, description) — null when none detected
+ALTER TABLE inbox_items ADD COLUMN IF NOT EXISTS calendar_event TEXT;
+
 -- =========================================================
 --  TABLE: notes
 -- =========================================================
