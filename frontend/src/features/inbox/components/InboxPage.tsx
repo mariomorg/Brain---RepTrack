@@ -84,12 +84,6 @@ const MarkdownIcon = () => (
         <line x1="8" y1="17" x2="16" y2="17" />
     </svg>
 );
-const RefreshIcon = () => (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="23 4 23 10 17 10" />
-        <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
-    </svg>
-);
 const SparkleIcon = () => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -300,6 +294,49 @@ function parseProposal(json: string | null): AiProposal | null {
     try { return JSON.parse(json); } catch { return null; }
 }
 
+/* ─────────────────────────── Calendar Event badge ─────────────────────────── */
+interface ParsedCalEvent {
+    type: string;
+    date: string | null;
+    time: string | null;
+    title: string | null;
+    description: string | null;
+}
+
+function parseCalendarEvent(json: string | null): ParsedCalEvent | null {
+    if (!json) return null;
+    try {
+        const parsed = JSON.parse(json) as ParsedCalEvent;
+        return parsed?.type === 'DATE_EVENT' ? parsed : null;
+    } catch { return null; }
+}
+
+function CalendarBadge({ calendarEvent }: Readonly<{ calendarEvent: string | null }>) {
+    const ev = parseCalendarEvent(calendarEvent);
+    if (!ev) return null;
+    const dateLabel = ev.date
+        ? new Date(ev.date + 'T00:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+        : null;
+    return (
+        <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '3px 8px', borderRadius: 6, marginTop: 6,
+            background: 'rgba(99,102,241,.12)', border: '1px solid rgba(99,102,241,.28)',
+            fontSize: 11, color: '#a5b4fc', fontWeight: 500,
+        }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            {ev.title ?? 'Evento'}
+            {dateLabel && <span style={{ opacity: 0.75 }}>· {dateLabel}</span>}
+            {ev.time && <span style={{ opacity: 0.75 }}>· {ev.time}</span>}
+        </div>
+    );
+}
+
 /* ─────────────────────────── Smart Suggestions (server-side) ─────────────────────────── */
 function SmartSuggestions({ suggestions, onAction }: Readonly<{
     suggestions: SuggestionDto[];
@@ -346,7 +383,6 @@ function SmartSuggestions({ suggestions, onAction }: Readonly<{
 export function PendingApprovalCard({
   item,
   onProcesar,
-  onReprocess, // (se queda en props por compatibilidad, pero ya no se usa)
   onRemove,
   processing,
 }: Readonly<{
@@ -384,6 +420,7 @@ export function PendingApprovalCard({
           </div>
 
           <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+          <CalendarBadge calendarEvent={item.calendarEvent} />
         </div>
 
         {/* Actions: Procesar next to Trash */}
@@ -492,7 +529,6 @@ export function PendingApprovalCard({
 export function ProcessedCard({
     item,
     suggestions,
-    onReprocess,
     onCreateMarkdown,
     onRemove,
     onSuggestion,
@@ -522,6 +558,7 @@ export function ProcessedCard({
                     </div>
                     <div className="inbox-item__text" style={{ WebkitLineClamp: 2 }}>{displayText(item)}</div>
                     <div className="inbox-item__time">{formatRelativeTime(item.createdAt)}</div>
+                    <CalendarBadge calendarEvent={item.calendarEvent} />
                 </div>
                 <button className="capture-toolbar-btn" title="Eliminar" onClick={onRemove} style={{ color: '#EF4444', flexShrink: 0 }}>
                     <TrashIcon />
@@ -603,7 +640,7 @@ export function ProcessedCard({
 
 /* ─────────────────────────── Main component ─────────────────────────── */
 export default function InboxPage() {
-    const { pendingItems, processedItems, pendingCount, loading, submitting, capture, captureFile, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
+    const { pendingItems, processedItems, loading, submitting, capture, captureFile, remove, procesar, createMarkdown, reprocess, refresh } = useInbox();
     const [text, setText] = useState('');
     const [attachments, setAttachments] = useState<AttachedFile[]>([]);
     const [recentNotes, setRecentNotes] = useState<Note[]>([]);

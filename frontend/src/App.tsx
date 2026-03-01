@@ -2,8 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
 import Layout from './shared/components/Layout';
-import InboxPage, { PendingApprovalCard, ProcessedCard } from './features/inbox/components/InboxPage';
-import { useInbox } from './features/inbox/hooks/useInbox';
+import InboxPage from './features/inbox/components/InboxPage';
 
 import CerebroPage from './features/cerebro/components/CerebroPage';
 import ResourceDetailPage from './pages/ResourceDetailPage';
@@ -12,6 +11,7 @@ import PerfilPage from './pages/PerfilPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import OAuth2CallbackPage from './pages/OAuth2CallbackPage';
+import CalendarPage from './pages/CalendarPage';
 import { AuthProvider, useAuth } from './features/auth/AuthContext';
 import PWAUpdatePrompt from './shared/components/PWAUpdatePrompt';
 import ShareTargetPage from './pages/ShareTargetPage';
@@ -237,116 +237,6 @@ const MapPage: React.FC = () => {
   );
 };
 
-function HomeRedesigned() {
-  const { pendingItems, processedItems, loading, remove, procesar, reprocess, createMarkdown } = useInbox();
-
-  const [processingIds, setProcessingIds] = React.useState<Set<string>>(new Set());
-  const [markdownCreatingIds, setMarkdownCreatingIds] = React.useState<Set<string>>(new Set());
-  const [processResults, setProcessResults] = React.useState<Record<string, any>>({});
-
-  const handleProcesar = async (id: string) => {
-    setProcessingIds((prev) => new Set(prev).add(id));
-    try {
-      const result = await procesar(id);
-      setProcessResults((prev) => ({ ...prev, [id]: result }));
-    } finally {
-      setProcessingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleReprocess = (id: string) => {
-    void reprocess(id);
-  };
-
-  const handleRemove = (id: string) => {
-    remove(id);
-  };
-
-  const handleCreateMarkdown = async (id: string) => {
-    setMarkdownCreatingIds((prev) => new Set(prev).add(id));
-    try {
-      await createMarkdown(id);
-    } finally {
-      setMarkdownCreatingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
-
-  const handleSuggestion = () => { };
-
-  const pendientesContent = loading ? (
-    <div className="inbox-empty">Cargando…</div>
-  ) : pendingItems.length === 0 ? (
-    <div className="inbox-empty">No hay elementos pendientes.</div>
-  ) : (
-    <div className="inbox-list">
-      {pendingItems.map((item) => (
-        <PendingApprovalCard
-          key={item.id}
-          item={item}
-          onProcesar={() => handleProcesar(item.id)}
-          onReprocess={() => handleReprocess(item.id)}
-          onRemove={() => handleRemove(item.id)}
-          processing={processingIds.has(item.id)}
-        />
-      ))}
-    </div>
-  );
-
-  const procesadosContent = loading ? (
-    <div className="inbox-empty">Cargando…</div>
-  ) : processedItems.length === 0 ? (
-    <div className="inbox-empty">No hay elementos procesados.</div>
-  ) : (
-    <div className="inbox-list">
-      {processedItems.map((item) => (
-        <ProcessedCard
-          key={item.id}
-          item={item}
-          suggestions={processResults[item.id]?.suggestions ?? []}
-          onReprocess={() => handleReprocess(item.id)}
-          onCreateMarkdown={() => handleCreateMarkdown(item.id)}
-          onRemove={() => handleRemove(item.id)}
-          onSuggestion={handleSuggestion}
-          creatingMarkdown={markdownCreatingIds.has(item.id)}
-        />
-      ))}
-    </div>
-  );
-
-  return (
-    <div className="inbox-page">
-      <header className="inbox-header">
-        <h1>Inbox Unificado</h1>
-        <p>Captura rápida de cualquier contenido. Sin pensar, sin clasificar.</p>
-      </header>
-
-      <div className="inbox-columns">
-        <section className="inbox-col">
-          <h2 className="inbox-col-title">
-            Pendientes <span className="inbox-count inbox-count-pending">({pendingItems.length})</span>
-          </h2>
-          {pendientesContent}
-        </section>
-
-        <section className="inbox-col">
-          <h2 className="inbox-col-title">
-            Procesados <span className="inbox-count inbox-count-processed">({processedItems.length})</span>
-          </h2>
-          {procesadosContent}
-        </section>
-      </div>
-    </div>
-  );
-}
-
 /** Wrapper that redirects to /login when not authenticated */
 function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user } = useAuth();
@@ -369,10 +259,11 @@ function AppRoutes() {
       <Route path="/share-target" element={<ShareTargetPage />} />
 
       {/* Protected routes — wrapped in Layout */}
-      <Route path="/" element={<ProtectedRoute><Layout><HomeRedesigned /></Layout></ProtectedRoute>} />
+      <Route path="/" element={<Navigate to={user ? "/inbox" : "/login"} replace />} />
       <Route path="/inbox" element={<ProtectedRoute><Layout><InboxPage /></Layout></ProtectedRoute>} />
       <Route path="/cerebro" element={<ProtectedRoute><Layout><CerebroPage /></Layout></ProtectedRoute>} />
       <Route path="/mapa" element={<ProtectedRoute><Layout><MapPage /></Layout></ProtectedRoute>} />
+      <Route path="/calendario" element={<ProtectedRoute><Layout><CalendarPage /></Layout></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Layout><ConfiguracionPage /></Layout></ProtectedRoute>} />
       <Route path="/perfil" element={<ProtectedRoute><Layout><PerfilPage /></Layout></ProtectedRoute>} />
       <Route path="/recurso/:id" element={<ProtectedRoute><Layout><ResourceDetailPage /></Layout></ProtectedRoute>} />

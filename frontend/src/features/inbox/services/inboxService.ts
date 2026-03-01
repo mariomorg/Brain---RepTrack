@@ -6,6 +6,7 @@ import {
     UpdateInboxItemRequest,
     ProcessResult,
     CaptureRequest,
+    CalendarEvent,
 } from '../types/inbox.types';
 
 const BASE = '/inbox';
@@ -93,6 +94,14 @@ export const inboxService = {
 
     createMarkdown: async (id: string): Promise<string> => {
         const res = await apiClient.post<ApiResponse<string>>(`${BASE}/${id}/create-markdown`);
+        return res.data.data;
+    },
+
+    /**
+     * Returns all inbox items that contain a detected calendar event.
+     */
+    getCalendarEvents: async (): Promise<CalendarEvent[]> => {
+        const res = await apiClient.get<ApiResponse<CalendarEvent[]>>('/calendar/events');
         return res.data.data;
     },
 };
