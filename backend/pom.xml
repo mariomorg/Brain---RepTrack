@@ -13,7 +13,7 @@
 
     <groupId>com.brainreptrack</groupId>
     <artifactId>brain-reptrack</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0</version>
     <name>Brain-RepTrack</name>
     <description>App to order and track repetition-based learning content</description>
 
